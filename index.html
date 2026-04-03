@@ -1,46 +1,132 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>成绩协调工具</title>
+<title>成绩协调工具-完整版</title>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
 <style>
-body{font-family:system-ui;background:linear-gradient(135deg,#667eea,#764ba2);padding:20px}
-.box{max-width:1000px;margin:0 auto;background:white;border-radius:16px;padding:30px}
-h1{text-align:center;color:#667eea}
+body{font-family:system-ui;background:linear-gradient(135deg,#667eea,#764ba2);padding:20px;margin:0}
+.container{max-width:1200px;margin:0 auto;background:white;border-radius:16px;padding:30px}
+.header{background:linear-gradient(135deg,#667eea,#764ba2);color:white;padding:30px;text-align:center;border-radius:16px 16px 0 0;margin:-30px -30px 30px}
 .btn{background:#667eea;color:white;padding:10px 20px;border:none;border-radius:8px;cursor:pointer;margin:5px}
-.upload{border:2px dashed #667eea;border-radius:12px;padding:40px;text-align:center;background:#f0f4ff;cursor:pointer}
+.btn-success{background:#28a745}
 table{width:100%;border-collapse:collapse;font-size:13px;margin-top:15px}
 th,td{padding:10px;border:1px solid #ddd;text-align:center}
 th{background:#667eea;color:white}
+tr:nth-child(even){background:#f5f5f5}
+.tab{display:inline-block;padding:10px 20px;cursor:pointer;border-bottom:2px solid transparent}
+.tab.active{border-bottom-color:#667eea;color:#667eea;font-weight:bold}
+.tab-content{display:none;padding:20px 0}
+.tab-content.active{display:block}
+.status{padding:15px;border-radius:8px;margin:15px 0}
+.status.success{background:#d4edda;color:#155724}
+.status.error{background:#f8d7da;color:#721c24}
+.upload-area{border:2px dashed #667eea;border-radius:12px;padding:40px;text-align:center;background:#f0f4ff;cursor:pointer}
+input[type=number]{width:60px;padding:5px;text-align:center}
 </style>
 </head>
 <body>
-<div class="box">
-<h1>🎓 成绩协调工具</h1>
-<div class="upload" onclick="document.getElementById('f').click()">
-<h2>📁 点击上传Excel</h2>
+<div class="container">
+<div class="header">
+<h1>🎓 成绩协调工具（完整版）</h1>
+<p>上传Excel → 设置目标排名 → 自动调整 → 导出结果</p>
 </div>
-<input type="file" id="f" accept=".xlsx" style="display:none" onchange="handle(event)">
-<div id="status"></div>
-<div id="table"></div>
+
+<div class="tabs">
+<div class="tab active" onclick="switchTab('upload')">📤 上传</div>
+<div class="tab" onclick="switchTab('rank')">📊 当前排名</div>
+<div class="tab" onclick="switchTab('target')">🎯 调整评分</div>
+<div class="tab" onclick="switchTab('result')">✅ 结果</div>
 </div>
+
+<div id="tab-upload" class="tab-content active">
+<div class="upload-area" onclick="document.getElementById('f').click()">
+<h2>📁 点击上传Excel成绩单</h2>
+<p>格式：序号 | 姓名 | 目标排名 | 面试官1-5(各4列) | 初试 | 总分</p>
+</div>
+<input type="file" id="f" accept=".xlsx" style="display:none" onchange="handleFile(event)">
+<div id="s1"></div>
+</div>
+
+<div id="tab-rank" class="tab-content">
+<button class="btn" onclick="calcRank()">🔄 计算当前排名</button>
+<div id="s2"></div>
+<div id="t1"></div>
+</div>
+
+<div id="tab-target" class="tab-content">
+<button class="btn btn-success" onclick="showAdjust()">⚡ 显示调整界面</button>
+<div id="s3"></div>
+<div id="t2"></div>
+</div>
+
+<div id="tab-result" class="tab-content">
+<button class="btn btn-success" onclick="downloadResult()">⬇️ 下载调整后的Excel</button>
+<div id="s4"></div>
+<div id="t3"></div>
+</div>
+</div>
+
 <script>
-function handle(e){
-const file=e.target.files[0];
-if(!file)return;
-const r=new FileReader();
-r.onload=function(e){
-try{
-const d=new Uint8Array(e.target.result);
-const wb=XLSX.read(d,{type:'array'});
-const s=wb.Sheets[wb.SheetNames[0]];
-const data=XLSX.utils.sheet_to_json(s,{header:1});
-document.getElementById('status').innerHTML='✅ 读取 '+data.length+' 行';
-document.getElementById('table').innerHTML='<table><tr>'+data[0].map(c=>'<th>'+c+'</th>').join('')+'</tr>'+data.slice(1,6).map(r=>'<tr>'+r.map(c=>'<td>'+c+'</td>').join('')+'</tr>').join('')+'</table>';
-}catch(err){document.getElementById('status').innerHTML='❌ '+err.message}
-};
-r.readAsArrayBuffer(file);
+let students=[],experts=[],current=[],results=[];const SUB=['综合素质','面试','笔试','英语'];
+function switchTab(id){document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));event.target.classList.add('active');document.getElementById('tab-'+id).classList.add('active');}
+function show(id,type,msg){const el=document.getElementById(id);el.className='status '+type;el.innerHTML=msg;}
+
+function handleFile(e){
+const file=e.target.files[0];if(!file)return;show('s1','info','读取中...');const r=new FileReader();
+r.onload=function(e){try{const d=new Uint8Array(e.target.result);const wb=XLSX.read(d,{type:'array'});const s=wb.Sheets[wb.SheetNames[0]];const data=XLSX.utils.sheet_to_json(s,{header:1});parse(data);show('s1','success','✅ 加载 '+students.length+' 人，'+experts.length+' 位专家');}catch(err){show('s1','error','❌ '+err.message);}};
+r.readAsArrayBuffer(file);}
+
+function parse(data){
+students=[];experts=[];const h=data[0];
+for(let i=0;i<h.length;i++)if(h[i]&&String(h[i]).includes('面试官')){experts.push(String(h[i]).trim());}
+let ci=-1,ct=-1;for(let i=0;i<h.length;i++){const v=String(h[i]||'');if(v.includes('初试'))ci=i;if(v==='总成绩')ct=i;}
+for(let i=1;i<data.length;i++){const r=data[i];if(!r[0])continue;
+const ex={};let pos=3;for(let j=0;j<experts.length;j++){ex[experts[j]]={};SUB.forEach((s,k)=>{ex[experts[j]][s]=parseFloat(r[pos+k])||0;});pos+=4;}
+students.push({seq:String(r[0]),name:String(r[1]||''),target:parseInt(r[2])||0,initial:parseFloat(r[ci])||0,total:parseFloat(r[ct])||0,scores:ex});}
+}
+
+function calcRank(){
+if(students.length===0){show('s2','error','请先上传文件');return;}
+current=students.map(s=>{const avgs=SUB.map(sub=>{const sc=experts.map(e=>s.scores[e][sub]);return sc.reduce((a,b)=>a+b,0)/sc.length;});const ret=avgs.reduce((a,b)=>a+b,0)/4;const tot=s.initial/10+ret/2;return{...s,retest:ret,total:tot};}).sort((a,b)=>b.total-a.total);
+let html='<table><tr><th>排名</th><th>序号</th><th>姓名</th><th>初试</th><th>复试均分</th><th>总分</th></tr>';
+current.forEach((s,i)=>{html+='<tr><td>'+(i+1)+'</td><td>'+s.seq+'</td><td>'+s.name+'</td><td>'+s.initial+'</td><td>'+s.retest.toFixed(2)+'</td><td><b>'+s.total.toFixed(2)+'</b></td></tr>';});
+html+='</table>';document.getElementById('t1').innerHTML=html;show('s2','success','计算完成，共'+current.length+'人');}
+
+function showAdjust(){
+if(current.length===0){show('s3','error','请先计算排名');return;}
+let html='<table><tr><th>当前排名</th><th>序号</th><th>姓名</th><th>初试</th><th>当前总分</th><th>目标排名</th><th>调整</th></tr>';
+current.forEach((s,i)=>{html+='<tr><td>'+(i+1)+'</td><td>'+s.seq+'</td><td>'+s.name+'</td><td>'+s.initial+'</td><td>'+s.total.toFixed(2)+'</td><td><input type="number" id="t-'+s.seq+'" value="'+(s.target||'')+'" min="1"></td><td><button class="btn" onclick="adjustOne(\''+s.seq+'\')">调整</button></td></tr>';});
+html+='</table><button class="btn btn-success" onclick="adjustAll()">批量调整全部</button>';document.getElementById('t2').innerHTML=html;show('s3','info','设置目标排名后点击调整');}
+
+function adjustOne(seq){
+const t=document.getElementById('t-'+seq).value;if(!t){alert('请输入目标排名');return;}
+const s=current.find(x=>x.seq===seq);if(!s)return;
+const targetTotal=95-(parseInt(t)-1)*0.5;
+const targetRetest=(targetTotal-s.initial/10)*2;
+const factor=s.retest>0?targetRetest/s.retest:1;
+const adj={};SUB.forEach(sub=>{adj[sub]={};experts.forEach(e=>{const o=s.scores[e][sub];let n=70+(o-70)*factor;n=Math.max(60,Math.min(100,n));n=Math.round(n*10)/10;adj[sub][e]=n;});});
+const newRetest=SUB.reduce((sum,sub)=>sum+experts.reduce((a,e)=>a+adj[sub][e],0)/experts.length,0)/4;
+const newTotal=s.initial/10+newRetest/2;
+results.push({seq:s.seq,name:s.name,target:parseInt(t),initial:s.initial,adj:adj,newRetest:newRetest,newTotal:newTotal,oldTotal:s.total});
+showResult();
+}
+
+function adjustAll(){
+current.forEach((s,i)=>{document.getElementById('t-'+s.seq).value=i+1;adjustOne(s.seq);});
+}
+
+function showResult(){
+if(results.length===0)return;
+let html='<table><tr><th>目标排名</th><th>序号</th><th>姓名</th><th>初试</th><th>新复试</th><th>新总分</th><th>变化</th></tr>';
+results.forEach(r=>{const ch=r.newTotal-r.oldTotal;const chs=ch>=0?'+':'';
+html+='<tr><td><b>'+r.target+'</b></td><td>'+r.seq+'</td><td>'+r.name+'</td><td>'+r.initial+'</td><td>'+r.newRetest.toFixed(2)+'</td><td><b>'+r.newTotal.toFixed(2)+'</b></td><td style="color:'+(ch>=0?'green':'red')+'">'+chs+ch.toFixed(2)+'</td></tr>';});
+html+='</table>';document.getElementById('t3').innerHTML=html;show('s4','success','调整完成'+results.length+'人');switchTab('result');}
+
+function downloadResult(){
+if(results.length===0){alert('没有数据');return;}
+const data=results.map(r=>{const row={序号:r.seq,姓名:r.name,目标排名:r.target,初试:r.initial,新复试平均分:r.newRetest.toFixed(2),新总分:r.newTotal.toFixed(2)};experts.forEach(e=>{SUB.forEach(s=>{row[e+'_'+s]=r.adj[s][e];});});return row;});
+const ws=XLSX.utils.json_to_sheet(data);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'调整后');XLSX.writeFile(wb,'调整后成绩单.xlsx');
 }
 </script>
 </body>
