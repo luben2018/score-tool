@@ -23,6 +23,7 @@ th{background:#667eea;color:white}
 .status.success{background:#d4edda;color:#155724}
 .status.error{background:#f8d7da;color:#721c24}
 .status.info{background:#d1ecf1;color:#0c5460}
+.status.warning{background:#fff3cd;color:#856404}
 .upload-area{border:3px dashed #667eea;border-radius:12px;padding:50px;text-align:center;background:#f0f4ff;cursor:pointer;margin:20px 0}
 .target-input{width:70px;padding:8px;text-align:center;border:2px solid #ced4da;border-radius:4px;font-weight:bold}
 .target-input.changed{border-color:#28a745;background:#d4edda}
@@ -35,7 +36,7 @@ th{background:#667eea;color:white}
 </head>
 <body>
 <div class="container">
-<div class="header"><h1>🎓 成绩协调工具-整数版</h1></div>
+<div class="header"><h1>🎓 成绩协调工具</h1></div>
 <div class="nav">
 <div class="nav-item active" onclick="showPage('upload')">1️⃣ 上传文件</div>
 <div class="nav-item" onclick="showPage('adjust')">2️⃣ 设置目标排名</div>
@@ -276,10 +277,9 @@ var colIdx=colStart+subj;
 var cellRef=XLSX.utils.encode_cell({r:s.rowIndex,c:colIdx});
 var oldVal=ws[cellRef]?ws[cellRef].v:0;
 
-// 直接缩放
 var newVal=oldVal*r.factor;
 newVal=Math.max(60,Math.min(100,newVal));
-newVal=Math.round(newVal); // 【关键】四舍五入为整数
+newVal=Math.round(newVal); // 【唯一改动】四舍五入为整数
 
 if(Math.abs(newVal-oldVal)>0.001){
 mods.push({student:s.name,expert:expName,subject:SUBJECTS[subj],old:oldVal,new:newVal});
@@ -314,10 +314,10 @@ html+='<tr><td><b>'+r.student.name+'</b></td><td>'+r.currentRank+'</td><td><b>'+
 html+='</table>';
 }
 if(mods.length>0){
-html+='<h3>面试官打分修改明细（整数）</h3><table><tr><th>学生</th><th>面试官</th><th>科目</th><th>原分数</th><th>新分数</th></tr>';
+html+='<h3>面试官打分修改明细</h3><table><tr><th>学生</th><th>面试官</th><th>科目</th><th>原分数</th><th>新分数(整数)</th></tr>';
 var byStudent={};
 for(var i=0;i<mods.length;i++){var m=mods[i];if(!byStudent[m.student])byStudent[m.student]=[];byStudent[m.student].push(m);}
-for(var name in byStudent){var mlist=byStudent[name];for(var i=0;i<mlist.length;i++){var m=mlist[i];html+='<tr'+(i===0?' style="border-top:2px solid #667eea"':'')+'><td>'+(i===0?name:'')+'</td><td>'+m.expert+'</td><td>'+m.subject+'</td><td>'+m.old.toFixed(0)+'</td><td class="modified">'+m.new.toFixed(0)+'</td></tr>';}}
+for(var name in byStudent){var mlist=byStudent[name];for(var i=0;i<mlist.length;i++){var m=mlist[i];html+='<tr'+(i===0?' style="border-top:2px solid #667eea"':'')+'><td>'+(i===0?name:'')+'</td><td>'+m.expert+'</td><td>'+m.subject+'</td><td>'+m.old+'</td><td class="modified">'+m.new+'</td></tr>';}}
 html+='</table>';
 }
 document.getElementById('result-table').innerHTML=html;
