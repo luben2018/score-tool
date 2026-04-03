@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>成绩协调工具-最终版</title>
+<title>成绩协调工具-精准调整版</title>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
 <style>
 body{font-family:system-ui;background:linear-gradient(135deg,#667eea,#764ba2);padding:20px;margin:0}
@@ -20,16 +20,18 @@ th{background:#667eea;color:white}
 .status{padding:15px;border-radius:8px;margin:15px 0;font-size:14px}
 .status.success{background:#d4edda;color:#155724}
 .status.error{background:#f8d7da;color:#721c24}
+.status.info{background:#d1ecf1;color:#0c5460}
 .upload-area{border:2px dashed #667eea;border-radius:12px;padding:40px;text-align:center;background:#f0f4ff;cursor:pointer;margin:20px 0}
 input[type=number]{width:70px;padding:5px;text-align:center;border:1px solid #ccc;border-radius:4px}
 .modified{background:#ffcccc!important;color:#cc0000!important;font-weight:bold}
+.need-adjust{background:#fff3cd}
 </style>
 </head>
 <body>
 <div class="container">
 <div class="header">
-<h1>🎓 成绩协调工具</h1>
-<p>结构：序号 | 姓名 | 评委1-5打分(列2-21) | 复试均分 | 初试 | 总成绩 | <b>目标排名(列29)</b></p>
+<h1>🎓 成绩协调工具（精准调整版）</h1>
+<p>只修改需要调整排名的学生，其他人保持不变</p>
 </div>
 
 <div class="tabs">
@@ -41,7 +43,7 @@ input[type=number]{width:70px;padding:5px;text-align:center;border:1px solid #cc
 <div id="tab-upload" class="tab-content active">
 <div class="upload-area" onclick="document.getElementById('f').click()">
 <h2>📁 点击上传Excel</h2>
-<p>评委打分：列2-21（5评委×4科），目标排名：列29</p>
+<p>评委打分：列2-21，目标排名：列29</p>
 </div>
 <input type="file" id="f" accept=".xlsx" style="display:none" onchange="handleFile(event)">
 <div id="s1"></div>
@@ -49,6 +51,7 @@ input[type=number]{width:70px;padding:5px;text-align:center;border:1px solid #cc
 
 <div id="tab-adjust" class="tab-content">
 <div id="s2"></div>
+<div id="stats"></div>
 <div id="adjustUI"></div>
 </div>
 
@@ -61,11 +64,9 @@ input[type=number]{width:70px;padding:5px;text-align:center;border:1px solid #cc
 
 <script>
 let wb=null,ws=null,data=null;
-let students=[],mods=[];
+let students=[],mods=[],needAdjustList=[];
 
-// 列定义
 const COL_SEQ=0, COL_NAME=1, COL_TARGET=29, COL_INITIAL=27, COL_TOTAL=28;
-// 5个评委的起始列（列2-21，每人4科）
 const EXPERT_COLS=[2,6,10,14,18];
 const SUB=['综合素质','面试','笔试','英语'];
 
@@ -119,7 +120,6 @@ for(let i=1;i<data.length;i++){
 const row=data[i];
 if(!row[COL_SEQ])continue;
 
-// 读取5个评委的打分（列2-21）
 const scores={};
 EXPERT_COLS.forEach((colStart,idx)=>{
 const expName='评委'+(idx+1);
@@ -143,7 +143,6 @@ total:parseFloat(row[COL_TOTAL])||0,
 scores:scores
 };
 
-// 计算复试平均分（20个分数）
 let retestSum=0;
 EXPERT_COLS.forEach((colStart,idx)=>{
 SUB.forEach((sub,j)=>{
@@ -158,71 +157,140 @@ students.push(student);
 }
 
 function renderUI(){
-const ranked=[...students].sort((a,b)=>b.calcTotal-a.calcTotal);
-ranked.forEach((s,i)=>s.rank=i+1);
+if(students.length===0)return;
 
-let html='<h3>设置目标排名（1=第一名）</h3>';
-html+='<table><tr><th>当前排名</th><th>序号</th><th>姓名</th><th>初试</th><th>复试均分</th><th>当前总分</th><th>目标排名</th></tr>';
+const ranked=[...students].sort((a,b)=>b.calcTotal-a.calcTotal);
+ranked.forEach((s,i)=>s.currentRank=i+1);
+
+needAdjustList=students.filter(s=>s.target>0&&s.target!==s.currentRank);
+const unchangedList=students.filter(s=>s.target<=0||s.target===s.currentRank);
+
+document.getElementById('stats').innerHTML=
+'<div class="status info">'+
+'总人数: <b>'+students.length+'</b> | '+
+'需要调整: <b style="color:#d39e00">'+needAdjustList.length+'</b>人 | '+
+'保持不变: <b style="color:#28a745">'+unchangedList.length+'</b>人'+
+'</div>';
+
+let html='<h3>设置目标排名（黄色行表示需要调整）</h3>';
+html+='<table><tr><th>当前排名</th><th>序号</th><th>姓名</th><th>初试</th><th>复试均分</th><th>当前总分</th><th>目标排名</th><th>状态</th></tr>';
 
 ranked.forEach(s=>{
-html+='<tr>';
-html+='<td>'+s.rank+'</td>';
+const needAdjust=s.target>0&&s.target!==s.currentRank;
+const rowClass=needAdjust?'need-adjust':'';
+const status=needAdjust?'<span style="color:#d39e00">需调整</span>':
+(s.target>0?'<span style="color:#28a745">✓</span>':'<span style="color:#999">-</span>');
+
+html+='<tr class="'+rowClass+'">';
+html+='<td>'+s.currentRank+'</td>';
 html+='<td>'+s.seq+'</td>';
 html+='<td>'+s.name+'</td>';
 html+='<td>'+s.initial+'</td>';
 html+='<td>'+s.retest.toFixed(2)+'</td>';
 html+='<td>'+s.calcTotal.toFixed(2)+'</td>';
 html+='<td><input type="number" id="t-'+s.seq+'" value="'+(s.target||'')+'" min="1" style="width:60px"></td>';
+html+='<td>'+status+'</td>';
 html+='</tr>';
 });
 
 html+='</table>';
 html+='<div style="margin-top:15px">';
-html+='<button class="btn btn-success" onclick="doAdjust()">🎯 智能调整</button> ';
-html+='<button class="btn" onclick="autoFill()">⚡ 按当前排名填充</button>';
+html+='<button class="btn btn-success" onclick="doAdjust()">🎯 精准调整（仅修改必要人员）</button> ';
+html+='<button class="btn" onclick="autoFill()">⚡ 按当前排名填充</button> ';
+html+='<button class="btn" onclick="clearTargets()">清空目标</button>';
 html+='</div>';
 
 document.getElementById('adjustUI').innerHTML=html;
-show('s2','success','共'+students.length+'人，目标排名从列29读取');
+show('s2','success','请设置目标排名，系统将只修改需要调整的学生');
 switchTab('adjust');
 }
 
 function autoFill(){
+const ranked=[...students].sort((a,b)=>b.calcTotal-a.calcTotal);
+ranked.forEach((s,i)=>{
+const el=document.getElementById('t-'+s.seq);
+if(el)el.value=i+1;
+});
+setTimeout(()=>{
 students.forEach(s=>{
 const el=document.getElementById('t-'+s.seq);
-if(el)el.value=s.rank||'';
+s.target=el?parseInt(el.value)||0:0;
 });
+renderUI();
+},100);
+}
+
+function clearTargets(){
+students.forEach(s=>{
+const el=document.getElementById('t-'+s.seq);
+if(el)el.value='';
+});
+setTimeout(()=>{
+students.forEach(s=>s.target=0);
+renderUI();
+},100);
 }
 
 function doAdjust(){
 mods=[];
-const targets=[];
 
 students.forEach(s=>{
 const el=document.getElementById('t-'+s.seq);
-const t=el?parseInt(el.value):0;
-if(t>0)targets.push({...s,target:t});
+s.target=el?parseInt(el.value)||0:0;
 });
 
-if(targets.length===0){alert('请至少设置一个目标排名');return;}
-targets.sort((a,b)=>a.target-b.target);
+const ranked=[...students].sort((a,b)=>b.calcTotal-a.calcTotal);
+ranked.forEach((s,i)=>s.currentRank=i+1);
+
+const needAdjust=students.filter(s=>s.target>0&&s.target!==s.currentRank);
+
+if(needAdjust.length===0){
+show('s2','success','✓ 没有需要调整的学生（目标排名与当前排名一致）');
+return;
+}
+
+needAdjust.sort((a,b)=>a.target-b.target);
 
 const results=[];
 const minGap=0.01;
 
-targets.forEach((s,idx)=>{
+needAdjust.forEach((s,idx)=>{
 let targetTotal;
-if(idx===0){
-targetTotal=Math.min(Math.max(s.calcTotal,85)+1,98);
+const currentAtTarget=ranked.find(st=>st.currentRank===s.target);
+
+if(currentAtTarget){
+if(s.target<s.currentRank){
+targetTotal=Math.max(currentAtTarget.calcTotal+minGap, s.calcTotal);
 }else{
-targetTotal=results[idx-1].targetTotal-minGap;
+targetTotal=Math.min(currentAtTarget.calcTotal-minGap, s.calcTotal);
 }
+}else{
+targetTotal=s.calcTotal+(s.currentRank-s.target)*0.5;
+}
+
+if(idx>0){
+const prevResult=results[idx-1];
+if(s.target===prevResult.target){
+targetTotal=prevResult.targetTotal;
+}else if(s.target<prevResult.target){
+targetTotal=Math.max(targetTotal, prevResult.targetTotal+minGap);
+}else{
+targetTotal=Math.min(targetTotal, prevResult.targetTotal-minGap);
+}
+}
+
+targetTotal=Math.max(60, Math.min(99, targetTotal));
 
 const targetRetest=(targetTotal-s.initial/10)*2;
 const factor=s.retest>0?targetRetest/s.retest:1;
-const clampedFactor=Math.max(0.85,Math.min(1.15,factor));
+const clampedFactor=Math.max(0.9, Math.min(1.1, factor));
 
-results.push({...s,targetTotal,targetRetest,factor:clampedFactor});
+results.push({
+...s,
+targetTotal:targetTotal,
+targetRetest:targetRetest,
+factor:clampedFactor
+});
 });
 
 apply(results);
@@ -230,14 +298,15 @@ apply(results);
 
 function apply(results){
 mods=[];
+let modifiedCount=0;
 
 results.forEach(r=>{
 const stu=students.find(s=>s.seq===r.seq);
 if(!stu)return;
 
 const rowIdx=stu.rowIndex;
+let studentModified=false;
 
-// 修改评委打分（列2-21）
 EXPERT_COLS.forEach((colStart,idx)=>{
 const expName='评委'+(idx+1);
 SUB.forEach((sub,j)=>{
@@ -246,31 +315,34 @@ const cellRef=XLSX.utils.encode_cell({r:rowIdx,c:colIdx});
 const oldVal=ws[cellRef]?ws[cellRef].v:0;
 
 let newVal=70+(oldVal-70)*r.factor;
-newVal=Math.max(60,Math.min(100,newVal));
+newVal=Math.max(60, Math.min(100, newVal));
 newVal=Math.round(newVal*10)/10;
 
 if(Math.abs(newVal-oldVal)>0.01){
-mods.push({row:rowIdx,col:colIdx,old:oldVal,new:newVal,student:r.name,exp:expName,sub:sub});
-ws[cellRef]={v:newVal,t:'n'};
+mods.push({
+row:rowIdx, col:colIdx,
+old:oldVal, new:newVal,
+student:r.name, exp:expName, sub:sub
+});
+ws[cellRef]={v:newVal, t:'n'};
+studentModified=true;
 }
 });
 });
 
-// 更新目标排名（列29）
-const targetCell=XLSX.utils.encode_cell({r:rowIdx,c:COL_TARGET});
-ws[targetCell]={v:r.target,t:'n'};
+if(studentModified)modifiedCount++;
+
+const targetCell=XLSX.utils.encode_cell({r:rowIdx, c:COL_TARGET});
+ws[targetCell]={v:r.target, t:'n'};
 });
 
-// 添加新列
 const lastCol=data[0].length;
 ws[XLSX.utils.encode_cell({r:0,c:lastCol})]={v:'调整后复试分',t:'s'};
 ws[XLSX.utils.encode_cell({r:0,c:lastCol+1})]={v:'调整后总分',t:'s'};
 ws[XLSX.utils.encode_cell({r:0,c:lastCol+2})]={v:'调整后排名',t:'s'};
 
-results.forEach(r=>{
-const stu=students.find(s=>s.seq===r.seq);
-const rowIdx=stu.rowIndex;
-
+students.forEach(s=>{
+const rowIdx=s.rowIndex;
 let newRetest=0;
 EXPERT_COLS.forEach((colStart,idx)=>{
 SUB.forEach((sub,j)=>{
@@ -279,39 +351,54 @@ newRetest+=ws[cellRef]?ws[cellRef].v:0;
 });
 });
 newRetest=newRetest/20;
-const newTotal=stu.initial/10+newRetest/2;
+const newTotal=s.initial/10+newRetest/2;
 
 ws[XLSX.utils.encode_cell({r:rowIdx,c:lastCol})]={v:parseFloat(newRetest.toFixed(2)),t:'n'};
 ws[XLSX.utils.encode_cell({r:rowIdx,c:lastCol+1})]={v:parseFloat(newTotal.toFixed(2)),t:'n'};
-ws[XLSX.utils.encode_cell({r:rowIdx,c:lastCol+2})]={v:r.target,t:'n'};
+
+const targetStudent=results.find(r=>r.seq===s.seq);
+ws[XLSX.utils.encode_cell({r:rowIdx,c:lastCol+2})]={v:targetStudent?targetStudent.target:s.currentRank,t:'n'};
 });
 
 const range=XLSX.utils.decode_range(ws['!ref']);
 range.e.c=Math.max(range.e.c,lastCol+2);
 ws['!ref']=XLSX.utils.encode_range(range);
 
-showResult(results);
+showResult(results, modifiedCount);
 }
 
-function showResult(results){
+function showResult(results, modifiedCount){
+const unchangedCount=students.length-results.length;
+
 let html='<h3>调整结果</h3>';
-html+='<p>修改单元格数: '+mods.length+'</p>';
-html+='<table><tr><th>目标排名</th><th>姓名</th><th>初试</th><th>原总分</th><th>新总分</th></tr>';
+html+='<div class="status success">';
+html+='✅ 修改学生: <b>'+modifiedCount+'</b>人 | ';
+html+='保持不变: <b>'+unchangedCount+'</b>人 | ';
+html+='修改单元格: <b>'+mods.length+'</b>个';
+html+='</div>';
+
+if(results.length>0){
+html+='<h4>调整详情</h4>';
+html+='<table><tr><th>姓名</th><th>原排名</th><th>目标排名</th><th>原总分</th><th>新总分</th><th>调整幅度</th></tr>';
 
 results.forEach(r=>{
+const diff=r.targetTotal-r.calcTotal;
+const diffClass=diff>0?'style="color:green"':(diff<0?'style="color:red"':'');
 html+='<tr>';
+html+='<td><b>'+r.name+'</b></td>';
+html+='<td>'+r.currentRank+'</td>';
 html+='<td><b>'+r.target+'</b></td>';
-html+='<td>'+r.name+'</td>';
-html+='<td>'+r.initial+'</td>';
 html+='<td>'+r.calcTotal.toFixed(2)+'</td>';
 html+='<td><b>'+r.targetTotal.toFixed(2)+'</b></td>';
+html+='<td '+diffClass+'>'+(diff>0?'+':'')+diff.toFixed(2)+'</td>';
 html+='</tr>';
 });
 html+='</table>';
+}
 
 if(mods.length>0){
-html+='<h3>修改详情（红色为修改项）</h3>';
-html+='<table><tr><th>学生</th><th>评委</th><th>科目</th><th>原分数</th><th>新分数</th></tr>';
+html+='<h4>分数修改明细</h4>';
+html+='<table><tr><th>学生</th><th>评委</th><th>科目</th><th>原分数</th><th>新分数</th><th>变化</th></tr>';
 
 const byStu={};
 mods.forEach(m=>{
@@ -321,12 +408,14 @@ byStu[m.student].push(m);
 
 for(const[name,ms] of Object.entries(byStu)){
 ms.forEach((m,i)=>{
+const diff=m.new-m.old;
 html+='<tr'+(i===0?' style="border-top:2px solid #667eea"':'')+'>';
 html+='<td>'+(i===0?name:'')+'</td>';
 html+='<td>'+m.exp+'</td>';
 html+='<td>'+m.sub+'</td>';
 html+='<td>'+m.old.toFixed(1)+'</td>';
 html+='<td class="modified">'+m.new.toFixed(1)+'</td>';
+html+='<td style="color:'+(diff>0?'green':'red')+'">'+(diff>0?'+':'')+diff.toFixed(1)+'</td>';
 html+='</tr>';
 });
 }
@@ -334,14 +423,14 @@ html+='</table>';
 }
 
 document.getElementById('resultTable').innerHTML=html;
-show('s3','success','✅ 调整完成！点击下载');
+show('s3','success','✅ 调整完成！仅修改了'+modifiedCount+'名学生的成绩');
 switchTab('result');
 }
 
 function exportResult(){
 if(!wb||mods.length===0){alert('没有可导出的数据');return;}
 
-const modData=[['修改记录'],['生成时间',new Date().toLocaleString()],['修改数',mods.length],[],
+const modData=[['修改记录'],['生成时间',new Date().toLocaleString()],['修改学生数',needAdjustList.length],['修改单元格数',mods.length],[],
 ['学生','评委','科目','原分数','新分数','变化']];
 
 mods.forEach(m=>{
