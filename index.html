@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>成绩协调工具</title>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+<style>
+body{font-family:system-ui;background:linear-gradient(135deg,#667eea,#764ba2);padding:20px}
+.box{max-width:1000px;margin:0 auto;background:white;border-radius:16px;padding:30px}
+h1{text-align:center;color:#667eea}
+.btn{background:#667eea;color:white;padding:10px 20px;border:none;border-radius:8px;cursor:pointer;margin:5px}
+.upload{border:2px dashed #667eea;border-radius:12px;padding:40px;text-align:center;background:#f0f4ff;cursor:pointer}
+table{width:100%;border-collapse:collapse;font-size:13px;margin-top:15px}
+th,td{padding:10px;border:1px solid #ddd;text-align:center}
+th{background:#667eea;color:white}
+</style>
+</head>
+<body>
+<div class="box">
+<h1>🎓 成绩协调工具</h1>
+<div class="upload" onclick="document.getElementById('f').click()">
+<h2>📁 点击上传Excel</h2>
+</div>
+<input type="file" id="f" accept=".xlsx" style="display:none" onchange="handle(event)">
+<div id="status"></div>
+<div id="table"></div>
+</div>
+<script>
+function handle(e){
+const file=e.target.files[0];
+if(!file)return;
+const r=new FileReader();
+r.onload=function(e){
+try{
+const d=new Uint8Array(e.target.result);
+const wb=XLSX.read(d,{type:'array'});
+const s=wb.Sheets[wb.SheetNames[0]];
+const data=XLSX.utils.sheet_to_json(s,{header:1});
+document.getElementById('status').innerHTML='✅ 读取 '+data.length+' 行';
+document.getElementById('table').innerHTML='<table><tr>'+data[0].map(c=>'<th>'+c+'</th>').join('')+'</tr>'+data.slice(1,6).map(r=>'<tr>'+r.map(c=>'<td>'+c+'</td>').join('')+'</tr>').join('')+'</table>';
+}catch(err){document.getElementById('status').innerHTML='❌ '+err.message}
+};
+r.readAsArrayBuffer(file);
+}
+</script>
+</body>
+</html>
