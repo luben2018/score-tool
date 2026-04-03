@@ -2,33 +2,29 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>成绩协调工具</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',PingFang SC,sans-serif;background:linear-gradient(135deg,#667eea,#764ba2);min-height:100vh;padding:20px;margin:0}
-.container{max-width:1400px;margin:0 auto;background:white;border-radius:16px;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,0.2)}
+body{font-family:system-ui;background:linear-gradient(135deg,#667eea,#764ba2);padding:20px;margin:0}
+.container{max-width:1400px;margin:0 auto;background:white;border-radius:16px;overflow:hidden}
 .header{background:linear-gradient(135deg,#667eea,#764ba2);color:white;padding:30px;text-align:center}
-.header h1{font-size:28px;margin-bottom:10px}
 .nav{display:flex;background:#f8f9fa;border-bottom:1px solid #e9ecef}
-.nav-item{flex:1;padding:15px;text-align:center;cursor:pointer;font-weight:500;color:#666}
+.nav-item{flex:1;padding:15px;text-align:center;cursor:pointer}
 .nav-item.active{color:#667eea;border-bottom:3px solid #667eea;background:white}
 .section{padding:30px;display:none}
 .section.active{display:block}
-.btn{background:#667eea;color:white;padding:12px 24px;border:none;border-radius:8px;cursor:pointer;font-size:14px;font-weight:500;margin:5px}
-.btn:hover{background:#5a6fd6}
+.btn{background:#667eea;color:white;padding:12px 24px;border:none;border-radius:8px;cursor:pointer;margin:5px}
 .btn-success{background:#28a745}
 .btn-secondary{background:#6c757d}
 table{width:100%;border-collapse:collapse;font-size:13px;margin-top:15px}
-th,td{padding:10px 8px;border:1px solid #dee2e6;text-align:center}
-th{background:#667eea;color:white;font-weight:600}
-.status{padding:15px;border-radius:8px;margin:15px 0;font-size:14px}
+th,td{padding:10px;border:1px solid #ddd;text-align:center}
+th{background:#667eea;color:white}
+.status{padding:15px;border-radius:8px;margin:15px 0}
 .status.success{background:#d4edda;color:#155724}
 .status.error{background:#f8d7da;color:#721c24}
 .status.info{background:#d1ecf1;color:#0c5460}
 .upload-area{border:3px dashed #667eea;border-radius:12px;padding:50px;text-align:center;background:#f0f4ff;cursor:pointer;margin:20px 0}
 .target-input{width:70px;padding:8px;text-align:center;border:2px solid #ced4da;border-radius:4px;font-weight:bold}
-.target-input:focus{border-color:#667eea;outline:none}
 .target-input.changed{border-color:#28a745;background:#d4edda}
 .modified{background:#ffebee!important;color:#c62828!important;font-weight:bold}
 .will-adjust{background:#fff3cd!important}
@@ -39,10 +35,7 @@ th{background:#667eea;color:white;font-weight:600}
 </head>
 <body>
 <div class="container">
-<div class="header">
-<h1>🎓 成绩协调工具</h1>
-</div>
-
+<div class="header"><h1>🎓 成绩协调工具</h1></div>
 <div class="nav">
 <div class="nav-item active" onclick="showPage('upload')">1️⃣ 上传文件</div>
 <div class="nav-item" onclick="showPage('adjust')">2️⃣ 设置目标排名</div>
@@ -51,8 +44,8 @@ th{background:#667eea;color:white;font-weight:600}
 
 <div id="page-upload" class="section active">
 <div class="upload-area" onclick="document.getElementById('fileInput').click()">
-<h2 style="color:#667eea;margin-bottom:15px">📁 点击上传Excel文件</h2>
-<p style="color:#666">支持 .xlsx 格式</p>
+<h2 style="color:#667eea">📁 点击上传Excel文件</h2>
+<p>支持 .xlsx 格式</p>
 </div>
 <input type="file" id="fileInput" accept=".xlsx" style="display:none">
 <div id="msg-upload"></div>
@@ -71,13 +64,10 @@ th{background:#667eea;color:white;font-weight:600}
 
 <div id="page-result" class="section">
 <div id="msg-result"></div>
-<div id="verify-result"></div>
 <div id="result-table"></div>
 <div id="download-box" class="download-section">
-<h3 style="margin-bottom:15px;color:#155724">✅ 调整完成！</h3>
-<button class="btn btn-success" onclick="downloadFile()" style="font-size:16px;padding:15px 30px">
-📥 下载修改后的Excel
-</button>
+<h3 style="color:#155724">✅ 调整完成！</h3>
+<button class="btn btn-success" onclick="downloadFile()">📥 下载修改后的Excel</button>
 </div>
 </div>
 </div>
@@ -86,369 +76,290 @@ th{background:#667eea;color:white;font-weight:600}
 var wb=null,ws=null,data=null;
 var students=[],mods=[],results=[];
 var COL_SEQ=0,COL_NAME=1,COL_EXPERT1=2,COL_EXPERT2=6,COL_EXPERT3=10,COL_EXPERT4=14,COL_EXPERT5=18;
-var COL_SUBJ1_AVG=22,COL_SUBJ2_AVG=23,COL_SUBJ3_AVG=24,COL_SUBJ4_AVG=25,COL_RETEST_FINAL=26;
+var COL_SUBJ1=22,COL_SUBJ2=23,COL_SUBJ3=24,COL_SUBJ4=25,COL_RETEST_FINAL=26;
 var COL_INITIAL=27,COL_TOTAL=28,COL_TARGET=29;
 var EXPERT_COLS=[COL_EXPERT1,COL_EXPERT2,COL_EXPERT3,COL_EXPERT4,COL_EXPERT5];
 var SUBJECTS=['综合素质','面试','笔试','英语'];
 
+// 严格模仿Excel的ROUND(,2)
+function round2(val){return Math.round(val*100)/100;}
+
 function showPage(name){
-var sections=document.querySelectorAll('.section');
-for(var i=0;i<sections.length;i++)sections[i].classList.remove('active');
-var navs=document.querySelectorAll('.nav-item');
-for(var i=0;i<navs.length;i++)navs[i].classList.remove('active');
-document.getElementById('page-'+name).classList.add('active');
-var navItems=document.querySelectorAll('.nav-item');
-if(name==='upload')navItems[0].classList.add('active');
-if(name==='adjust')navItems[1].classList.add('active');
-if(name==='result')navItems[2].classList.add('active');
+  document.querySelectorAll('.section').forEach(function(s){s.classList.remove('active');});
+  document.querySelectorAll('.nav-item').forEach(function(n){n.classList.remove('active');});
+  document.getElementById('page-'+name).classList.add('active');
+  var idx={'upload':0,'adjust':1,'result':2}[name];
+  document.querySelectorAll('.nav-item')[idx].classList.add('active');
 }
 
 function showMsg(id,type,msg){
-var el=document.getElementById(id);
-if(el){el.className='status '+type;el.innerHTML=msg;}
+  var el=document.getElementById(id);
+  if(el){el.className='status '+type;el.innerHTML=msg;}
 }
 
 document.getElementById('fileInput').addEventListener('change',function(e){
-if(e.target.files.length>0)loadFile(e.target.files[0]);
+  if(e.target.files.length>0)loadFile(e.target.files[0]);
 });
 
 function loadFile(file){
-showMsg('msg-upload','info','正在读取文件...');
-var reader=new FileReader();
-reader.onload=function(e){
-try{
-var data_array=new Uint8Array(e.target.result);
-wb=XLSX.read(data_array,{type:'array'});
-ws=wb.Sheets[wb.SheetNames[0]];
-data=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
-
-console.log('文件读取成功，行数:',data.length,'列数:',data[0].length);
-parseStudents();
-
-if(students.length===0){
-showMsg('msg-upload','error','❌ 未能识别学生数据');
-return;
-}
-
-showMsg('msg-upload','success','✅ 成功加载 '+students.length+' 名学生');
-renderAdjustPage();
-setTimeout(function(){showPage('adjust');},300);
-}catch(err){
-console.error(err);
-showMsg('msg-upload','error','❌ 读取失败: '+err.message);
-}
-};
-reader.onerror=function(e){
-showMsg('msg-upload','error','❌ 文件读取错误');
-};
-reader.readAsArrayBuffer(file);
+  showMsg('msg-upload','info','正在读取文件...');
+  var reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      var arr=new Uint8Array(e.target.result);
+      wb=XLSX.read(arr,{type:'array'});
+      ws=wb.Sheets[wb.SheetNames[0]];
+      data=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+      parseStudents();
+      if(students.length===0){showMsg('msg-upload','error','❌ 未能识别学生数据');return;}
+      showMsg('msg-upload','success','✅ 成功加载 '+students.length+' 名学生');
+      renderAdjustPage();
+      setTimeout(function(){showPage('adjust');},300);
+    }catch(err){showMsg('msg-upload','error','❌ 读取失败: '+err.message);}
+  };
+  reader.readAsArrayBuffer(file);
 }
 
 function calcRetestFinal(subjAvgs){
-var val=subjAvgs[0]*0.1+subjAvgs[1]*0.3+subjAvgs[2]*0.4+subjAvgs[3]*0.2;
-return Math.round(val*100)/100;
+  return round2(subjAvgs[0]*0.1 + subjAvgs[1]*0.3 + subjAvgs[2]*0.4 + subjAvgs[3]*0.2);
 }
 
 function calcTotal(initial,retestFinal){
-var val=initial/10+retestFinal/2;
-return Math.round(val*100)/100;
+  return round2(initial/10 + retestFinal/2);
 }
 
 function parseStudents(){
-students=[];
-if(!data||data.length<2)return;
-
-for(var i=1;i<data.length;i++){
-var row=data[i];
-if(!row||!row[COL_SEQ])continue;
-
-var expertScores=[];
-for(var e=0;e<5;e++){
-var start=EXPERT_COLS[e];
-expertScores.push([
-parseFloat(row[start])||0,
-parseFloat(row[start+1])||0,
-parseFloat(row[start+2])||0,
-parseFloat(row[start+3])||0
-]);
-}
-
-var subjAvgs=[];
-for(var subj=0;subj<4;subj++){
-var sum=0;
-for(var e=0;e<5;e++)sum+=expertScores[e][subj];
-subjAvgs.push(Math.round(sum/5*100)/100);
-}
-
-var retestFinal=calcRetestFinal(subjAvgs);
-var initial=parseFloat(row[COL_INITIAL])||0;
-var total=calcTotal(initial,retestFinal);
-var target=parseInt(row[COL_TARGET])||0;
-
-students.push({
-rowIndex:i,
-seq:String(row[COL_SEQ]),
-name:String(row[COL_NAME]||''),
-expertScores:expertScores,
-subjAvgs:subjAvgs,
-retestFinal:retestFinal,
-initial:initial,
-total:total,
-target:target
-});
-}
-
-students.sort(function(a,b){return b.total-a.total;});
-for(var i=0;i<students.length;i++){
-students[i].currentRank=i+1;
-if(students[i].target===0)students[i].target=students[i].currentRank;
-}
+  students=[];
+  if(!data||data.length<2)return;
+  for(var i=1;i<data.length;i++){
+    var row=data[i];
+    if(!row||!row[COL_SEQ])continue;
+    var expertScores=[];
+    for(var e=0;e<5;e++){
+      var start=EXPERT_COLS[e];
+      expertScores.push([
+        parseFloat(row[start])||0,
+        parseFloat(row[start+1])||0,
+        parseFloat(row[start+2])||0,
+        parseFloat(row[start+3])||0
+      ]);
+    }
+    var subjAvgs=[];
+    for(var subj=0;subj<4;subj++){
+      var sum=0;
+      for(var e=0;e<5;e++)sum+=expertScores[e][subj];
+      subjAvgs.push(round2(sum/5));
+    }
+    var retestFinal=calcRetestFinal(subjAvgs);
+    var initial=parseFloat(row[COL_INITIAL])||0;
+    var total=calcTotal(initial,retestFinal);
+    var target=parseInt(row[COL_TARGET])||0;
+    students.push({
+      rowIndex:i,seq:String(row[COL_SEQ]),name:String(row[COL_NAME]||''),
+      expertScores:expertScores,subjAvgs:subjAvgs,retestFinal:retestFinal,
+      initial:initial,total:total,target:target
+    });
+  }
+  students.sort(function(a,b){return b.total-a.total;});
+  for(var i=0;i<students.length;i++){
+    students[i].currentRank=i+1;
+    if(students[i].target===0)students[i].target=students[i].currentRank;
+  }
 }
 
 function renderAdjustPage(){
-var willAdjust=0;
-for(var i=0;i<students.length;i++){
-if(students[i].target!==students[i].currentRank)willAdjust++;
-}
-
-var statsHtml='<div class="status info">总人数: <b>'+students.length+'</b> | 将调整: <b style="color:#d39e00">'+willAdjust+'</b> | 保持: <b style="color:#28a745">'+(students.length-willAdjust)+'</b></div>';
-document.getElementById('stats-adjust').innerHTML=statsHtml;
-
-var html='<table><tr><th>当前排名</th><th>序号</th><th>姓名</th><th>初试</th><th>复试成绩</th><th>总成绩</th><th>目标排名</th><th>状态</th></tr>';
-
-for(var i=0;i<students.length;i++){
-var s=students[i];
-var willChange=s.target!==s.currentRank;
-var rowClass=willChange?'will-adjust':'keep';
-var status=willChange?'<span style="color:#d39e00;font-weight:bold">将调整</span>':'<span style="color:#28a745">✓ 保持</span>';
-
-html+='<tr class="'+rowClass+'">';
-html+='<td>'+s.currentRank+'</td>';
-html+='<td>'+s.seq+'</td>';
-html+='<td><b>'+s.name+'</b></td>';
-html+='<td>'+s.initial.toFixed(0)+'</td>';
-html+='<td>'+s.retestFinal.toFixed(2)+'</td>';
-html+='<td>'+s.total.toFixed(2)+'</td>';
-html+='<td><input type="number" class="target-input" id="target-'+s.seq+'" value="'+s.target+'" min="1" max="'+students.length+'" onchange="onTargetChange('+i+')"></td>';
-html+='<td id="status-'+s.seq+'">'+status+'</td>';
-html+='</tr>';
-}
-html+='</table>';
-
-document.getElementById('table-adjust').innerHTML=html;
-showMsg('msg-adjust','info','已按总成绩降序排列，目标排名默认=当前排名。请修改需要调整的行，然后点击"执行智能调整"。');
+  var willAdjust=0;
+  for(var i=0;i<students.length;i++)if(students[i].target!==students[i].currentRank)willAdjust++;
+  document.getElementById('stats-adjust').innerHTML=
+    '<div class="status info">总人数: <b>'+students.length+'</b> | 将调整: <b style="color:#d39e00">'+willAdjust+'</b> | 保持: <b style="color:#28a745">'+(students.length-willAdjust)+'</b></div>';
+  var html='<table><tr><th>当前排名</th><th>序号</th><th>姓名</th><th>初试</th><th>复试成绩</th><th>总成绩</th><th>目标排名</th><th>状态</th></tr>';
+  for(var i=0;i<students.length;i++){
+    var s=students[i];
+    var willChange=s.target!==s.currentRank;
+    var rowClass=willChange?'will-adjust':'keep';
+    var status=willChange?'<span style="color:#d39e00;font-weight:bold">将调整</span>':'<span style="color:#28a745">✓ 保持</span>';
+    html+='<tr class="'+rowClass+'">';
+    html+='<td>'+s.currentRank+'</td><td>'+s.seq+'</td><td><b>'+s.name+'</b></td>';
+    html+='<td>'+s.initial.toFixed(0)+'</td><td>'+s.retestFinal.toFixed(2)+'</td><td>'+s.total.toFixed(2)+'</td>';
+    html+='<td><input type="number" class="target-input" id="target-'+s.seq+'" value="'+s.target+'" min="1" max="'+students.length+'" onchange="onTargetChange('+i+')"></td>';
+    html+='<td id="status-'+s.seq+'">'+status+'</td></tr>';
+  }
+  html+='</table>';
+  document.getElementById('table-adjust').innerHTML=html;
+  showMsg('msg-adjust','info','已按总成绩降序排列。请修改需要调整的行，然后点击"执行智能调整"。');
 }
 
 function onTargetChange(studentIdx){
-var s=students[studentIdx];
-var input=document.getElementById('target-'+s.seq);
-var newTarget=parseInt(input.value)||0;
-s.target=newTarget;
-
-var willChange=newTarget!==s.currentRank;
-var statusCell=document.getElementById('status-'+s.seq);
-var row=input.closest('tr');
-
-if(willChange){
-statusCell.innerHTML='<span style="color:#d39e00;font-weight:bold">将调整</span>';
-row.className='will-adjust';
-input.classList.add('changed');
-}else{
-statusCell.innerHTML='<span style="color:#28a745">✓ 保持</span>';
-row.className='keep';
-input.classList.remove('changed');
-}
-updateStats();
+  var s=students[studentIdx];
+  var input=document.getElementById('target-'+s.seq);
+  var newTarget=parseInt(input.value)||0;
+  s.target=newTarget;
+  var willChange=newTarget!==s.currentRank;
+  var statusCell=document.getElementById('status-'+s.seq);
+  var row=input.closest('tr');
+  if(willChange){
+    statusCell.innerHTML='<span style="color:#d39e00;font-weight:bold">将调整</span>';
+    row.className='will-adjust';input.classList.add('changed');
+  }else{
+    statusCell.innerHTML='<span style="color:#28a745">✓ 保持</span>';
+    row.className='keep';input.classList.remove('changed');
+  }
+  updateStats();
 }
 
 function updateStats(){
-var willAdjust=0;
-for(var i=0;i<students.length;i++){
-if(students[i].target!==students[i].currentRank)willAdjust++;
-}
-var statsHtml='<div class="status info">总人数: <b>'+students.length+'</b> | 将调整: <b style="color:#d39e00">'+willAdjust+'</b> | 保持: <b style="color:#28a745">'+(students.length-willAdjust)+'</b></div>';
-document.getElementById('stats-adjust').innerHTML=statsHtml;
+  var willAdjust=0;
+  for(var i=0;i<students.length;i++)if(students[i].target!==students[i].currentRank)willAdjust++;
+  document.getElementById('stats-adjust').innerHTML=
+    '<div class="status info">总人数: <b>'+students.length+'</b> | 将调整: <b style="color:#d39e00">'+willAdjust+'</b> | 保持: <b style="color:#28a745">'+(students.length-willAdjust)+'</b></div>';
 }
 
 function fillCurrentRank(){
-for(var i=0;i<students.length;i++){
-var s=students[i];
-s.target=s.currentRank;
-var input=document.getElementById('target-'+s.seq);
-if(input){
-input.value=s.currentRank;
-input.classList.remove('changed');
-}
-var statusCell=document.getElementById('status-'+s.seq);
-if(statusCell)statusCell.innerHTML='<span style="color:#28a745">✓ 保持</span>';
-var row=input?input.closest('tr'):null;
-if(row)row.className='keep';
-}
-updateStats();
+  for(var i=0;i<students.length;i++){
+    var s=students[i];s.target=s.currentRank;
+    var input=document.getElementById('target-'+s.seq);
+    if(input){input.value=s.currentRank;input.classList.remove('changed');}
+    var statusCell=document.getElementById('status-'+s.seq);
+    if(statusCell)statusCell.innerHTML='<span style="color:#28a745">✓ 保持</span>';
+    var row=input?input.closest('tr'):null;if(row)row.className='keep';
+  }
+  updateStats();
 }
 
 function clearAllTargets(){
-for(var i=0;i<students.length;i++){
-var s=students[i];
-s.target=0;
-var input=document.getElementById('target-'+s.seq);
-if(input){
-input.value='';
-input.classList.remove('changed');
-}
-var statusCell=document.getElementById('status-'+s.seq);
-if(statusCell)statusCell.innerHTML='<span style="color:#999">未设置</span>';
-var row=input?input.closest('tr'):null;
-if(row)row.className='';
-}
-updateStats();
+  for(var i=0;i<students.length;i++){
+    var s=students[i];s.target=0;
+    var input=document.getElementById('target-'+s.seq);
+    if(input){input.value='';input.classList.remove('changed');}
+    var statusCell=document.getElementById('status-'+s.seq);
+    if(statusCell)statusCell.innerHTML='<span style="color:#999">未设置</span>';
+    var row=input?input.closest('tr'):null;if(row)row.className='';
+  }
+  updateStats();
 }
 
 function executeAdjustment(){
-for(var i=0;i<students.length;i++){
-var s=students[i];
-var input=document.getElementById('target-'+s.seq);
-s.target=input?parseInt(input.value)||0:0;
-}
-
-var toAdjust=[];
-for(var i=0;i<students.length;i++){
-var s=students[i];
-if(s.target>0&&s.target!==s.currentRank)toAdjust.push(s);
-}
-
-if(toAdjust.length===0){
-showMsg('msg-adjust','warning','⚠️ 没有需要调整的学生');
-return;
-}
-
-toAdjust.sort(function(a,b){return a.target-b.target;});
-mods=[];results=[];
-
-for(var i=0;i<toAdjust.length;i++){
-var s=toAdjust[i];
-var targetTotal;
-if(s.target<s.currentRank){
-var targetStudent=null;
-for(var j=0;j<students.length;j++){
-if(students[j].currentRank===s.target){targetStudent=students[j];break;}
-}
-targetTotal=targetStudent?targetStudent.total+0.01:s.total+0.1;
-}else{
-var targetStudent=null;
-for(var j=0;j<students.length;j++){
-if(students[j].currentRank===s.target){targetStudent=students[j];break;}
-}
-targetTotal=targetStudent?targetStudent.total-0.01:s.total-0.1;
-}
-
-if(i>0){
-var prev=results[i-1];
-if(s.target===prev.target)targetTotal=prev.targetTotal;
-else if(s.target<prev.target&&targetTotal<=prev.targetTotal)targetTotal=prev.targetTotal+0.01;
-else if(s.target>prev.target&&targetTotal>=prev.targetTotal)targetTotal=prev.targetTotal-0.01;
-}
-
-var targetRetest=(targetTotal-s.initial/10)*2;
-var factor=s.retestFinal>0?targetRetest/s.retestFinal:1;
-factor=Math.max(0.85,Math.min(1.15,factor));
-
-results.push({
-student:s,targetRank:s.target,currentRank:s.currentRank,
-targetTotal:targetTotal,currentTotal:s.total,targetRetest:targetRetest,factor:factor
-});
-}
-
-applyChanges();
+  for(var i=0;i<students.length;i++){
+    var s=students[i];
+    var input=document.getElementById('target-'+s.seq);
+    s.target=input?parseInt(input.value)||0:0;
+  }
+  var toAdjust=[];
+  for(var i=0;i<students.length;i++){
+    var s=students[i];
+    if(s.target>0&&s.target!==s.currentRank)toAdjust.push(s);
+  }
+  if(toAdjust.length===0){showMsg('msg-adjust','warning','⚠️ 没有需要调整的学生');return;}
+  toAdjust.sort(function(a,b){return a.target-b.target;});
+  mods=[];results=[];
+  for(var i=0;i<toAdjust.length;i++){
+    var s=toAdjust[i];
+    var targetTotal;
+    if(s.target<s.currentRank){
+      var targetStudent=null;
+      for(var j=0;j<students.length;j++)if(students[j].currentRank===s.target){targetStudent=students[j];break;}
+      targetTotal=targetStudent?round2(targetStudent.total+0.01):round2(s.total+0.1);
+    }else{
+      var targetStudent=null;
+      for(var j=0;j<students.length;j++)if(students[j].currentRank===s.target){targetStudent=students[j];break;}
+      targetTotal=targetStudent?round2(targetStudent.total-0.01):round2(s.total-0.1);
+    }
+    if(i>0){
+      var prev=results[i-1];
+      if(s.target===prev.target)targetTotal=prev.targetTotal;
+      else if(s.target<prev.target&&targetTotal<=prev.targetTotal)targetTotal=round2(prev.targetTotal+0.01);
+      else if(s.target>prev.target&&targetTotal>=prev.targetTotal)targetTotal=round2(prev.targetTotal-0.01);
+    }
+    var targetRetest=round2((targetTotal-s.initial/10)*2);
+    var factor=s.retestFinal>0?targetRetest/s.retestFinal:1;
+    factor=Math.max(0.85,Math.min(1.15,factor));
+    results.push({student:s,targetRank:s.target,currentRank:s.currentRank,targetTotal:targetTotal,currentTotal:s.total,factor:factor});
+  }
+  applyChanges();
 }
 
 function applyChanges(){
-var modifiedCount=0;
-for(var i=0;i<results.length;i++){
-var r=results[i];var s=r.student;var hasChange=false;
-for(var e=0;e<5;e++){
-var colStart=EXPERT_COLS[e];var expName='面试官'+(e+1);
-for(var subj=0;subj<4;subj++){
-var colIdx=colStart+subj;
-var cellRef=XLSX.utils.encode_cell({r:s.rowIndex,c:colIdx});
-var oldVal=ws[cellRef]?ws[cellRef].v:0;
-var newVal=70+(oldVal-70)*r.factor;
-newVal=Math.max(60,Math.min(100,newVal));
-newVal=Math.round(newVal*10)/10;
-if(Math.abs(newVal-oldVal)>0.01){
-mods.push({student:s.name,expert:expName,subject:SUBJECTS[subj],old:oldVal,new:newVal});
-ws[cellRef]={v:newVal,t:'n'};hasChange=true;
-}
-}
-}
-if(hasChange)modifiedCount++;
-var targetCell=XLSX.utils.encode_cell({r:s.rowIndex,c:COL_TARGET});
-ws[targetCell]={v:r.targetRank,t:'n'};
-}
-verifyResults();
-showResultPage(modifiedCount);
-}
-
-function verifyResults(){
-var verifyHtml='<h3 style="margin:20px 0">验证结果</h3>';
-verifyHtml+='<table><tr><th>姓名</th><th>目标排名</th><th>目标总分</th><th>预期复试</th><th>状态</th></tr>';
-for(var i=0;i<results.length;i++){
-var r=results[i];var s=r.student;
-var newSubjAvgs=[];
-for(var subj=0;subj<4;subj++){
-var sum=0;
-for(var e=0;e<5;e++){
-var colStart=EXPERT_COLS[e];
-var cellRef=XLSX.utils.encode_cell({r:s.rowIndex,c:colStart+subj});
-sum+=ws[cellRef]?ws[cellRef].v:0;
-}
-newSubjAvgs.push(Math.round(sum/5*100)/100);
-}
-var newRetest=calcRetestFinal(newSubjAvgs);
-var newTotal=calcTotal(s.initial,newRetest);
-var diff=Math.abs(newTotal-r.targetTotal);
-var status=diff<0.02?'<span style="color:green">✓ 达标</span>':'<span style="color:red">✗ 偏差'+diff.toFixed(2)+'</span>';
-verifyHtml+='<tr><td>'+s.name+'</td><td>'+r.targetRank+'</td><td>'+r.targetTotal.toFixed(2)+' / '+newTotal.toFixed(2)+'</td><td>'+r.targetRetest.toFixed(2)+' / '+newRetest.toFixed(2)+'</td><td>'+status+'</td></tr>';
-}
-verifyHtml+='</table>';
-document.getElementById('verify-result').innerHTML=verifyHtml;
+  var modifiedCount=0;
+  for(var i=0;i<results.length;i++){
+    var r=results[i];var s=r.student;var hasChange=false;
+    for(var e=0;e<5;e++){
+      var colStart=EXPERT_COLS[e];var expName='面试官'+(e+1);
+      for(var subj=0;subj<4;subj++){
+        var colIdx=colStart+subj;
+        var cellRef=XLSX.utils.encode_cell({r:s.rowIndex,c:colIdx});
+        var oldVal=ws[cellRef]?ws[cellRef].v:0;
+        var newVal=70+(oldVal-70)*r.factor;
+        newVal=Math.max(60,Math.min(100,newVal));
+        newVal=round2(newVal);
+        if(Math.abs(newVal-oldVal)>0.001){
+          mods.push({student:s.name,expert:expName,subject:SUBJECTS[subj],old:oldVal,new:newVal});
+          ws[cellRef]={v:newVal,t:'n'};hasChange=true;
+        }
+      }
+    }
+    if(hasChange)modifiedCount++;
+  }
+  // 关键修复：正确写入目标排名 - 遍历所有学生
+  for(var i=0;i<students.length;i++){
+    var s=students[i];
+    var targetCell=XLSX.utils.encode_cell({r:s.rowIndex,c:COL_TARGET});
+    ws[targetCell]={v:s.target,t:'n'};
+  }
+  showResultPage(modifiedCount);
 }
 
 function showResultPage(modifiedCount){
-var html='<h3 style="margin:20px 0">调整结果汇总</h3>';
-html+='<p>修改学生: <b>'+modifiedCount+'</b> 人 | 修改单元格: <b>'+mods.length+'</b> 个</p>';
-if(results.length>0){
-html+='<table><tr><th>姓名</th><th>原排名</th><th>目标排名</th><th>原总分</th><th>目标总分</th><th>变化</th></tr>';
-for(var i=0;i<results.length;i++){
-var r=results[i];var diff=r.targetTotal-r.currentTotal;
-var color=diff>0?'green':(diff<0?'red':'#666');var sign=diff>0?'+':'';
-html+='<tr><td><b>'+r.student.name+'</b></td><td>'+r.currentRank+'</td><td><b>'+r.targetRank+'</b></td><td>'+r.currentTotal.toFixed(2)+'</td><td>'+r.targetTotal.toFixed(2)+'</td><td style="color:'+color+'">'+sign+diff.toFixed(2)+'</td></tr>';
-}
-html+='</table>';
-}
-if(mods.length>0){
-html+='<h3 style="margin:20px 0">面试官打分修改明细</h3>';
-html+='<table><tr><th>学生</th><th>面试官</th><th>科目</th><th>原分数</th><th>新分数</th><th>变化</th></tr>';
-var byStudent={};
-for(var i=0;i<mods.length;i++){var m=mods[i];if(!byStudent[m.student])byStudent[m.student]=[];byStudent[m.student].push(m);}
-for(var name in byStudent){var mlist=byStudent[name];for(var i=0;i<mlist.length;i++){var m=mlist[i];var diff=m.new-m.old;html+='<tr'+(i===0?' style="border-top:2px solid #667eea"':'')+'><td>'+(i===0?name:'')+'</td><td>'+m.expert+'</td><td>'+m.subject+'</td><td>'+m.old.toFixed(1)+'</td><td class="modified">'+m.new.toFixed(1)+'</td><td style="color:'+(diff>0?'green':'red')+'">'+(diff>0?'+':'')+diff.toFixed(1)+'</td></tr>';}}
-html+='</table>';
-}
-document.getElementById('result-table').innerHTML=html;
-document.getElementById('download-box').classList.add('show');
-showMsg('msg-result','success','✅ 调整完成！只修改了面试官原始打分（列2-21），初试成绩和总成绩严格保护未修改。');
-showPage('result');
+  var verifyHtml='<h3>验证计算结果</h3><table><tr><th>姓名</th><th>目标排名</th><th>目标总分</th><th>实际总分</th><th>状态</th></tr>';
+  for(var i=0;i<results.length;i++){
+    var r=results[i];var s=r.student;
+    var newSubjAvgs=[];
+    for(var subj=0;subj<4;subj++){
+      var sum=0;
+      for(var e=0;e<5;e++){
+        var colStart=EXPERT_COLS[e];
+        var cellRef=XLSX.utils.encode_cell({r:s.rowIndex,c:colStart+subj});
+        sum+=ws[cellRef]?ws[cellRef].v:0;
+      }
+      newSubjAvgs.push(round2(sum/5));
+    }
+    var newRetest=calcRetestFinal(newSubjAvgs);
+    var newTotal=calcTotal(s.initial,newRetest);
+    var diff=Math.abs(newTotal-r.targetTotal);
+    var status=diff<0.02?'<span style="color:green">✓</span>':'<span style="color:red">✗ 偏差'+diff.toFixed(2)+'</span>';
+    verifyHtml+='<tr><td>'+s.name+'</td><td>'+r.targetRank+'</td><td>'+r.targetTotal.toFixed(2)+'</td><td>'+newTotal.toFixed(2)+'</td><td>'+status+'</td></tr>';
+  }
+  verifyHtml+='</table>';
+  var html='<h3>调整结果汇总</h3><p>修改学生: <b>'+modifiedCount+'</b> 人 | 修改单元格: <b>'+mods.length+'</b> 个</p>';
+  if(results.length>0){
+    html+='<table><tr><th>姓名</th><th>原排名</th><th>目标排名</th><th>原总分</th><th>目标总分</th></tr>';
+    for(var i=0;i<results.length;i++){
+      var r=results[i];
+      html+='<tr><td><b>'+r.student.name+'</b></td><td>'+r.currentRank+'</td><td><b>'+r.targetRank+'</b></td><td>'+r.currentTotal.toFixed(2)+'</td><td>'+r.targetTotal.toFixed(2)+'</td></tr>';
+    }
+    html+='</table>';
+  }
+  if(mods.length>0){
+    html+='<h3>面试官打分修改明细</h3><table><tr><th>学生</th><th>面试官</th><th>科目</th><th>原分数</th><th>新分数</th></tr>';
+    var byStudent={};
+    for(var i=0;i<mods.length;i++){var m=mods[i];if(!byStudent[m.student])byStudent[m.student]=[];byStudent[m.student].push(m);}
+    for(var name in byStudent){var mlist=byStudent[name];for(var i=0;i<mlist.length;i++){var m=mlist[i];html+='<tr'+(i===0?' style="border-top:2px solid #667eea"':'')+'><td>'+(i===0?name:'')+'</td><td>'+m.expert+'</td><td>'+m.subject+'</td><td>'+m.old.toFixed(1)+'</td><td class="modified">'+m.new.toFixed(1)+'</td></tr>';}}
+    html+='</table>';
+  }
+  document.getElementById('result-table').innerHTML=verifyHtml+html;
+  document.getElementById('download-box').classList.add('show');
+  showMsg('msg-result','success','✅ 调整完成！');
+  showPage('result');
 }
 
 function downloadFile(){
-if(!wb||mods.length===0){alert('没有可导出的数据');return;}
-var modData=[['修改记录'],['生成时间',new Date().toLocaleString()],['修改学生数',results.length],['修改单元格数',mods.length],[],['学生','面试官','科目','原分数','新分数','变化值']];
-for(var i=0;i<mods.length;i++){var m=mods[i];modData.push([m.student,m.expert,m.subject,m.old,m.new,(m.new-m.old).toFixed(2)]);}
-var modWs=XLSX.utils.aoa_to_sheet(modData);
-wb.SheetNames.push('修改记录');
-wb.Sheets['修改记录']=modWs;
-XLSX.writeFile(wb,'成绩单_已调整.xlsx');
-showMsg('msg-result','success','✅ 文件已下载！');
+  if(!wb||mods.length===0){alert('没有可导出的数据');return;}
+  var modData=[['修改记录'],['生成时间',new Date().toLocaleString()],['修改学生数',results.length],['修改单元格数',mods.length],[],['学生','面试官','科目','原分数','新分数']];
+  for(var i=0;i<mods.length;i++){var m=mods[i];modData.push([m.student,m.expert,m.subject,m.old,m.new]);}
+  var modWs=XLSX.utils.aoa_to_sheet(modData);
+  wb.SheetNames.push('修改记录');
+  wb.Sheets['修改记录']=modWs;
+  XLSX.writeFile(wb,'成绩单_已调整.xlsx');
+  showMsg('msg-result','success','✅ 文件已下载！');
 }
 </script>
 </body>
