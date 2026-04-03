@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>成绩协调工具-批量智能版</title>
+<title>成绩协调工具-智能加权版</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 body{font-family:system-ui;background:linear-gradient(135deg,#667eea,#764ba2);padding:20px;margin:0}
@@ -33,11 +33,12 @@ th{background:#667eea;color:white}
 .download-section{display:none;padding:20px;background:#d4edda;border-radius:8px;text-align:center;margin-top:20px}
 .download-section.show{display:block}
 .simulation-box{background:#f0f4ff;border:2px solid #667eea;border-radius:8px;padding:15px;margin:15px 0}
+.strategy-info{background:#e3f2fd;border-left:4px solid #2196f3;padding:10px;margin:10px 0;font-size:12px}
 </style>
 </head>
 <body>
 <div class="container">
-<div class="header"><h1>🎓 成绩协调工具-批量智能版</h1></div>
+<div class="header"><h1>🎓 成绩协调工具-智能加权版</h1></div>
 <div class="nav">
 <div class="nav-item active" onclick="showPage('upload')">1️⃣ 上传文件</div>
 <div class="nav-item" onclick="showPage('adjust')">2️⃣ 设置目标排名</div>
@@ -57,6 +58,9 @@ th{background:#667eea;color:white}
 <div id="page-adjust" class="section">
 <div id="msg-adjust"></div>
 <div id="stats-adjust"></div>
+<div class="strategy-info">
+<b>💡 优化策略：</b>系统会根据科目权重智能调整（笔试40% > 面试30% > 英语20% > 综合素质10%），优先调整高权重科目，实现更精细的分数控制。
+</div>
 <div id="table-adjust"></div>
 <div style="margin-top:20px;text-align:center">
 <button class="btn btn-success" onclick="showPreview()">👁️ 预览调整效果</button>
@@ -93,589 +97,628 @@ var EXPERT_COLS=[COL_EXPERT1,COL_EXPERT2,COL_EXPERT3,COL_EXPERT4,COL_EXPERT5];
 var SUBJECTS=['综合素质','面试','笔试','英语'];
 var WEIGHTS=[0.1,0.3,0.4,0.2];
 
+// 科目优先级（权重越高，越优先调整）
+var SUBJECT_PRIORITY=[3,2,1,0]; // 笔试(3)>面试(2)>英语(1)>综合素质(0)
+
 function round2(val){return Math.round((val+1e-10)*100)/100;}
 
 function calcRetest(scores){
-var subjAvgs=[];
-for(var subj=0;subj<4;subj++){
-var sum=0;
-for(var e=0;e<5;e++)sum+=scores[e*4+subj];
-subjAvgs.push(round2(sum/5));
+  var subjAvgs=[];
+  for(var subj=0;subj<4;subj++){
+    var sum=0;
+    for(var e=0;e<5;e++)sum+=scores[e*4+subj];
+    subjAvgs.push(round2(sum/5));
+  }
+  var retest=round2(subjAvgs[0]*WEIGHTS[0]+subjAvgs[1]*WEIGHTS[1]+subjAvgs[2]*WEIGHTS[2]+subjAvgs[3]*WEIGHTS[3]);
+  return {retest:retest,subjAvgs:subjAvgs};
 }
-var retest=round2(subjAvgs[0]*WEIGHTS[0]+subjAvgs[1]*WEIGHTS[1]+subjAvgs[2]*WEIGHTS[2]+subjAvgs[3]*WEIGHTS[3]);
-return {retest:retest,subjAvgs:subjAvgs};
+
+function calcTotal(initial,retest){
+  return round2(initial/10+retest/2);
 }
 
 function showPage(name){
-document.querySelectorAll('.section').forEach(function(s){s.classList.remove('active');});
-document.querySelectorAll('.nav-item').forEach(function(n){n.classList.remove('active');});
-document.getElementById('page-'+name).classList.add('active');
-var idx={'upload':0,'adjust':1,'preview':2,'result':3}[name];
-if(idx>=0)document.querySelectorAll('.nav-item')[idx].classList.add('active');
+  document.querySelectorAll('.section').forEach(function(s){s.classList.remove('active');});
+  document.querySelectorAll('.nav-item').forEach(function(n){n.classList.remove('active');});
+  document.getElementById('page-'+name).classList.add('active');
+  var idx={'upload':0,'adjust':1,'preview':2,'result':3}[name];
+  if(idx>=0)document.querySelectorAll('.nav-item')[idx].classList.add('active');
 }
 
 function showMsg(id,type,msg){
-var el=document.getElementById(id);
-if(el){el.className='status '+type;el.innerHTML=msg;}
+  var el=document.getElementById(id);
+  if(el){el.className='status '+type;el.innerHTML=msg;}
 }
 
 document.getElementById('fileInput').addEventListener('change',function(e){
-if(e.target.files.length>0)loadFile(e.target.files[0]);
+  if(e.target.files.length>0)loadFile(e.target.files[0]);
 });
 
 function loadFile(file){
-showMsg('msg-upload','info','正在读取文件...');
-var reader=new FileReader();
-reader.onload=function(e){
-try{
-var arr=new Uint8Array(e.target.result);
-wb=XLSX.read(arr,{type:'array'});
-ws=wb.Sheets[wb.SheetNames[0]];
-data=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
-parseStudents();
-if(students.length===0){showMsg('msg-upload','error','❌ 未能识别学生数据');return;}
-showMsg('msg-upload','success','✅ 成功加载 '+students.length+' 名学生');
-renderAdjustPage();
-setTimeout(function(){showPage('adjust');},300);
-}catch(err){showMsg('msg-upload','error','❌ 读取失败: '+err.message);}
-};
-reader.readAsArrayBuffer(file);
+  showMsg('msg-upload','info','正在读取文件...');
+  var reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      var arr=new Uint8Array(e.target.result);
+      wb=XLSX.read(arr,{type:'array'});
+      ws=wb.Sheets[wb.SheetNames[0]];
+      data=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+      parseStudents();
+      if(students.length===0){showMsg('msg-upload','error','❌ 未能识别学生数据');return;}
+      showMsg('msg-upload','success','✅ 成功加载 '+students.length+' 名学生');
+      renderAdjustPage();
+      setTimeout(function(){showPage('adjust');},300);
+    }catch(err){showMsg('msg-upload','error','❌ 读取失败: '+err.message);}
+  };
+  reader.readAsArrayBuffer(file);
 }
 
 function parseStudents(){
-students=[];
-if(!data||data.length<2)return;
-for(var i=1;i<data.length;i++){
-var row=data[i];
-if(!row||!row[COL_SEQ])continue;
-var rawScores=[];
-for(var e=0;e<5;e++){
-var start=EXPERT_COLS[e];
-for(var subj=0;subj<4;subj++){
-rawScores.push(parseFloat(row[start+subj])||0);
-}
-}
-var retestFinal=parseFloat(row[COL_RETEST_FINAL])||0;
-var initial=parseFloat(row[COL_INITIAL])||0;
-var total=parseFloat(row[COL_TOTAL])||0;
-var target=parseInt(row[COL_TARGET])||0;
-students.push({
-rowIndex:i,
-seq:String(row[COL_SEQ]),
-name:String(row[COL_NAME]||''),
-rawScores:rawScores,
-retestFinal:retestFinal,
-initial:initial,
-total:total,
-target:target,
-id:i
-});
-}
-students.sort(function(a,b){return b.total-a.total;});
-for(var i=0;i<students.length;i++){
-students[i].currentRank=i+1;
-if(students[i].target===0)students[i].target=students[i].currentRank;
-}
+  students=[];
+  if(!data||data.length<2)return;
+  for(var i=1;i<data.length;i++){
+    var row=data[i];
+    if(!row||!row[COL_SEQ])continue;
+    var rawScores=[];
+    for(var e=0;e<5;e++){
+      var start=EXPERT_COLS[e];
+      for(var subj=0;subj<4;subj++){
+        rawScores.push(parseFloat(row[start+subj])||0);
+      }
+    }
+    var retestFinal=parseFloat(row[COL_RETEST_FINAL])||0;
+    var initial=parseFloat(row[COL_INITIAL])||0;
+    var total=parseFloat(row[COL_TOTAL])||0;
+    var target=parseInt(row[COL_TARGET])||0;
+    students.push({
+      rowIndex:i,
+      seq:String(row[COL_SEQ]),
+      name:String(row[COL_NAME]||''),
+      rawScores:rawScores,
+      retestFinal:retestFinal,
+      initial:initial,
+      total:total,
+      target:target,
+      id:i
+    });
+  }
+  students.sort(function(a,b){return b.total-a.total;});
+  for(var i=0;i<students.length;i++){
+    students[i].currentRank=i+1;
+    if(students[i].target===0)students[i].target=students[i].currentRank;
+  }
 }
 
 function renderAdjustPage(){
-var willAdjust=0;
-for(var i=0;i<students.length;i++){
-if(students[i].target!==students[i].currentRank)willAdjust++;
-}
-document.getElementById('stats-adjust').innerHTML='<div class="status info">总人数: <b>'+students.length+'</b> | 将调整: <b style="color:#d39e00">'+willAdjust+'</b> | 保持: <b style="color:#28a745">'+(students.length-willAdjust)+'</b></div>';
-
-var html='<table><tr><th>当前排名</th><th>序号</th><th>姓名</th><th>初试</th><th>复试成绩</th><th>总成绩</th><th>目标排名</th><th>状态</th></tr>';
-for(var i=0;i<students.length;i++){
-var s=students[i];
-var willChange=s.target!==s.currentRank;
-var rowClass=willChange?'will-adjust':'keep';
-var status=willChange?'<span style="color:#d39e00;font-weight:bold">将调整</span>':'<span style="color:#28a745">✓ 保持</span>';
-html+='<tr class="'+rowClass+'"><td>'+s.currentRank+'</td><td>'+s.seq+'</td><td><b>'+s.name+'</b></td><td>'+s.initial.toFixed(0)+'</td><td>'+s.retestFinal.toFixed(2)+'</td><td>'+s.total.toFixed(2)+'</td><td><input type="number" class="target-input" id="target-'+s.seq+'" value="'+s.target+'" min="1" max="'+students.length+'" onchange="onTargetChange('+i+')"></td><td id="status-'+s.seq+'">'+status+'</td></tr>';
-}
-html+='</table>';
-document.getElementById('table-adjust').innerHTML=html;
-showMsg('msg-adjust','info','已按总成绩降序排列。请修改需要调整的行，然后点击"预览调整效果"。');
+  var willAdjust=0;
+  for(var i=0;i<students.length;i++){
+    if(students[i].target!==students[i].currentRank)willAdjust++;
+  }
+  document.getElementById('stats-adjust').innerHTML='<div class="status info">总人数: <b>'+students.length+'</b> | 将调整: <b style="color:#d39e00">'+willAdjust+'</b> | 保持: <b style="color:#28a745">'+(students.length-willAdjust)+'</b></div>';
+  
+  var html='<table><tr><th>当前排名</th><th>序号</th><th>姓名</th><th>初试</th><th>复试成绩</th><th>总成绩</th><th>目标排名</th><th>状态</th></tr>';
+  for(var i=0;i<students.length;i++){
+    var s=students[i];
+    var willChange=s.target!==s.currentRank;
+    var rowClass=willChange?'will-adjust':'keep';
+    var status=willChange?'<span style="color:#d39e00;font-weight:bold">将调整</span>':'<span style="color:#28a745">✓ 保持</span>';
+    html+='<tr class="'+rowClass+'"><td>'+s.currentRank+'</td><td>'+s.seq+'</td><td><b>'+s.name+'</b></td><td>'+s.initial.toFixed(0)+'</td><td>'+s.retestFinal.toFixed(2)+'</td><td>'+s.total.toFixed(2)+'</td><td><input type="number" class="target-input" id="target-'+s.seq+'" value="'+s.target+'" min="1" max="'+students.length+'" onchange="onTargetChange('+i+')"></td><td id="status-'+s.seq+'">'+status+'</td></tr>';
+  }
+  html+='</table>';
+  document.getElementById('table-adjust').innerHTML=html;
+  showMsg('msg-adjust','info','已按总成绩降序排列。请修改需要调整的行。');
 }
 
 function onTargetChange(studentIdx){
-var s=students[studentIdx];
-var input=document.getElementById('target-'+s.seq);
-var newTarget=parseInt(input.value)||0;
-s.target=newTarget;
-var willChange=newTarget!==s.currentRank;
-var statusCell=document.getElementById('status-'+s.seq);
-var row=input.closest('tr');
-if(willChange){
-statusCell.innerHTML='<span style="color:#d39e00;font-weight:bold">将调整</span>';
-row.className='will-adjust';
-input.classList.add('changed');
-}else{
-statusCell.innerHTML='<span style="color:#28a745">✓ 保持</span>';
-row.className='keep';
-input.classList.remove('changed');
-}
-updateStats();
+  var s=students[studentIdx];
+  var input=document.getElementById('target-'+s.seq);
+  var newTarget=parseInt(input.value)||0;
+  s.target=newTarget;
+  var willChange=newTarget!==s.currentRank;
+  var statusCell=document.getElementById('status-'+s.seq);
+  var row=input.closest('tr');
+  if(willChange){
+    statusCell.innerHTML='<span style="color:#d39e00;font-weight:bold">将调整</span>';
+    row.className='will-adjust';
+    input.classList.add('changed');
+  }else{
+    statusCell.innerHTML='<span style="color:#28a745">✓ 保持</span>';
+    row.className='keep';
+    input.classList.remove('changed');
+  }
+  updateStats();
 }
 
 function updateStats(){
-var willAdjust=0;
-for(var i=0;i<students.length;i++){
-if(students[i].target!==students[i].currentRank)willAdjust++;
-}
-document.getElementById('stats-adjust').innerHTML='<div class="status info">总人数: <b>'+students.length+'</b> | 将调整: <b style="color:#d39e00">'+willAdjust+'</b> | 保持: <b style="color:#28a745">'+(students.length-willAdjust)+'</b></div>';
+  var willAdjust=0;
+  for(var i=0;i<students.length;i++){
+    if(students[i].target!==students[i].currentRank)willAdjust++;
+  }
+  document.getElementById('stats-adjust').innerHTML='<div class="status info">总人数: <b>'+students.length+'</b> | 将调整: <b style="color:#d39e00">'+willAdjust+'</b> | 保持: <b style="color:#28a745">'+(students.length-willAdjust)+'</b></div>';
 }
 
 function fillCurrentRank(){
-for(var i=0;i<students.length;i++){
-var s=students[i];
-s.target=s.currentRank;
-var input=document.getElementById('target-'+s.seq);
-if(input){
-input.value=s.currentRank;
-input.classList.remove('changed');
-}
-var statusCell=document.getElementById('status-'+s.seq);
-if(statusCell)statusCell.innerHTML='<span style="color:#28a745">✓ 保持</span>';
-var row=input?input.closest('tr'):null;
-if(row)row.className='keep';
-}
-updateStats();
+  for(var i=0;i<students.length;i++){
+    var s=students[i];
+    s.target=s.currentRank;
+    var input=document.getElementById('target-'+s.seq);
+    if(input){
+      input.value=s.currentRank;
+      input.classList.remove('changed');
+    }
+    var statusCell=document.getElementById('status-'+s.seq);
+    if(statusCell)statusCell.innerHTML='<span style="color:#28a745">✓ 保持</span>';
+    var row=input?input.closest('tr'):null;
+    if(row)row.className='keep';
+  }
+  updateStats();
 }
 
 function clearAllTargets(){
-for(var i=0;i<students.length;i++){
-var s=students[i];
-s.target=0;
-var input=document.getElementById('target-'+s.seq);
-if(input){
-input.value='';
-input.classList.remove('changed');
-}
-var statusCell=document.getElementById('status-'+s.seq);
-if(statusCell)statusCell.innerHTML='<span style="color:#999">未设置</span>';
-var row=input?input.closest('tr'):null;
-if(row)row.className='';
-}
-updateStats();
+  for(var i=0;i<students.length;i++){
+    var s=students[i];
+    s.target=0;
+    var input=document.getElementById('target-'+s.seq);
+    if(input){
+      input.value='';
+      input.classList.remove('changed');
+    }
+    var statusCell=document.getElementById('status-'+s.seq);
+    if(statusCell)statusCell.innerHTML='<span style="color:#999">未设置</span>';
+    var row=input?input.closest('tr'):null;
+    if(row)row.className='';
+  }
+  updateStats();
 }
 
-// 【核心算法】模拟批量调整后的新排名
+// 【核心新算法】智能加权调整 - 优先调整高权重科目，可选择性调整部分分数
+function findSmartAdjustment(s,targetRank,allStudents){
+  var initial=s.initial;
+  var rawScores=s.rawScores.slice();
+  var currentTotal=s.total;
+  var currentRank=s.currentRank;
+  
+  // 获取当前所有学生的总分
+  var sorted=allStudents.slice().sort(function(a,b){return b.total-a.total;});
+  
+  // 找到目标排名的上下界
+  var higherStudent=null;
+  var lowerStudent=null;
+  
+  for(var i=0;i<sorted.length;i++){
+    if(sorted[i].id===s.id)continue;
+    var rank=i+1;
+    if(rank===targetRank-1)higherStudent=sorted[i];
+    if(rank===targetRank)lowerStudent=sorted[i];
+  }
+  
+  // 计算目标分数范围
+  var minTotal,maxTotal;
+  if(targetRank===1){
+    minTotal=lowerStudent?lowerStudent.total+0.01:currentTotal+0.01;
+    maxTotal=100;
+  }else if(!higherStudent){
+    minTotal=lowerStudent?lowerStudent.total+0.01:currentTotal+0.01;
+    maxTotal=currentTotal+10;
+  }else{
+    minTotal=lowerStudent?lowerStudent.total+0.005:currentTotal+0.01;
+    maxTotal=higherStudent.total-0.005;
+  }
+  
+  if(minTotal>=maxTotal){
+    minTotal=lowerStudent?lowerStudent.total+0.001:currentTotal+0.01;
+    maxTotal=higherStudent?higherStudent.total-0.001:minTotal+1;
+  }
+  
+  // 策略：优先调整高权重科目
+  var bestResult=null;
+  var bestError=Infinity;
+  
+  var strategies=[
+    {name:'笔试',subjects:[2]},
+    {name:'笔试+面试',subjects:[2,1]},
+    {name:'笔试+面试+英语',subjects:[2,1,3]},
+    {name:'全部科目',subjects:[0,1,2,3]}
+  ];
+  
+  for(var stratIdx=0;stratIdx<strategies.length;stratIdx++){
+    var strategy=strategies[stratIdx];
+    var result=tryStrategy(s,strategy.subjects,minTotal,maxTotal,currentRank<targetRank);
+    
+    if(result.success){
+      var error=Math.abs(result.newTotal-currentTotal);
+      var strategyPenalty=strategy.subjects.length*0.001;
+      var score=error+strategyPenalty;
+      
+      if(score<bestError){
+        bestError=score;
+        bestResult=result;
+        bestResult.strategy=strategy.name;
+      }
+    }
+  }
+  
+  return bestResult||{success:false};
+}
+
+// 尝试特定策略的调整
+function tryStrategy(s,subjectsToAdjust,minTotal,maxTotal,isLowering){
+  var initial=s.initial;
+  var rawScores=s.rawScores.slice();
+  
+  var bestDelta=null;
+  var bestNewScores=null;
+  var bestNewTotal=null;
+  var bestModifiedCount=Infinity;
+  
+  var deltaRange=isLowering?[-5,-4,-3,-2,-1]:[1,2,3,4,5];
+  
+  for(var dIdx=0;dIdx<deltaRange.length;dIdx++){
+    var delta=deltaRange[dIdx];
+    
+    for(var numExperts=1;numExperts<=5;numExperts++){
+      var newScores=rawScores.slice();
+      var valid=true;
+      var modifiedCount=0;
+      
+      for(var sIdx=0;sIdx<subjectsToAdjust.length;sIdx++){
+        var subj=subjectsToAdjust[sIdx];
+        
+        for(var e=0;e<numExperts;e++){
+          var idx=e*4+subj;
+          var newScore=Math.round(rawScores[idx])+delta;
+          if(newScore<60||newScore>100){valid=false;break;}
+          newScores[idx]=newScore;
+          if(newScore!==Math.round(rawScores[idx]))modifiedCount++;
+        }
+        if(!valid)break;
+      }
+      
+      if(!valid)continue;
+      
+      var retestResult=calcRetest(newScores);
+      var newTotal=calcTotal(initial,retestResult.retest);
+      
+      if(newTotal>=minTotal&&newTotal<=maxTotal){
+        if(modifiedCount<bestModifiedCount||(modifiedCount===bestModifiedCount&&Math.abs(newTotal-s.total)<Math.abs(bestNewTotal-s.total))){
+          bestModifiedCount=modifiedCount;
+          bestDelta=delta;
+          bestNewScores=newScores;
+          bestNewTotal=newTotal;
+        }
+      }
+    }
+  }
+  
+  if(bestDelta!==null){
+    return{
+      success:true,
+      delta:bestDelta,
+      newScores:bestNewScores,
+      newTotal:bestNewTotal,
+      modifiedCount:bestModifiedCount
+    };
+  }
+  
+  return{success:false};
+}
+
+// 模拟批量调整
 function simulateNewRanking(){
-// 读取所有目标
-for(var i=0;i<students.length;i++){
-var s=students[i];
-var input=document.getElementById('target-'+s.seq);
-s.target=input?parseInt(input.value)||0:0;
-}
-
-// 创建副本进行模拟
-var simStudents=students.map(function(s){
-return{
-id:s.id,
-name:s.name,
-currentRank:s.currentRank,
-target:s.target,
-total:s.total,
-initial:s.initial,
-rawScores:s.rawScores.slice()
-};
-});
-
-// 需要调整的学生
-var toAdjust=simStudents.filter(function(s){
-return s.target>0&&s.target!==s.currentRank;
-});
-
-if(toAdjust.length===0)return{success:false,message:'没有需要调整的学生'};
-
-// 按调整幅度从小到大排序（优先处理小调整）
-toAdjust.sort(function(a,b){
-return Math.abs(a.target-a.currentRank)-Math.abs(b.target-b.currentRank);
-});
-
-simulationResults=[];
-var adjustedIds={};
-
-// 迭代处理，直到所有都处理完或无法继续
-var maxIterations=toAdjust.length*3;
-var iteration=0;
-
-while(iteration<maxIterations){
-iteration++;
-var processedInThisRound=0;
-
-for(var i=0;i<toAdjust.length;i++){
-var s=toAdjust[i];
-if(adjustedIds[s.id])continue; // 已处理
-
-// 基于当前模拟状态计算目标位置
-var result=findAdjustmentForStudent(s,simStudents);
-
-if(result.success){
-// 应用调整
-s.newTotal=result.newTotal;
-s.delta=result.delta;
-adjustedIds[s.id]=true;
-processedInThisRound++;
-
-simulationResults.push({
-student:s,
-delta:result.delta,
-newTotal:result.newTotal
-});
-
-// 更新simStudents中的总分（用于后续学生的计算）
-for(var j=0;j<simStudents.length;j++){
-if(simStudents[j].id===s.id){
-simStudents[j].total=result.newTotal;
-break;
-}
-}
-}
-}
-
-if(processedInThisRound===0)break; // 无法继续
-}
-
-// 检查是否有未处理的
-var failed=toAdjust.filter(function(s){return!adjustedIds[s.id];});
-
-return{
-success:simulationResults.length>0,
-results:simulationResults,
-failed:failed,
-simStudents:simStudents
-};
-}
-
-// 为单个学生寻找调整方案
-function findAdjustmentForStudent(s,allStudents){
-var targetRank=s.target;
-var currentRank=s.currentRank;
-var initial=s.initial;
-var rawScores=s.rawScores.slice();
-
-// 获取当前所有学生的总分（包括已调整的）
-var sorted=allStudents.slice().sort(function(a,b){return b.total-a.total;});
-
-// 找到目标排名的上下界
-var higherStudent=null; // 目标排名的前一名
-var lowerStudent=null; // 目标排名的后一名（原位置的学生）
-
-for(var i=0;i<sorted.length;i++){
-if(sorted[i].id===s.id)continue; // 跳过自己
-
-var rank=i+1;
-if(rank===targetRank-1)higherStudent=sorted[i];
-if(rank===targetRank)lowerStudent=sorted[i];
-}
-
-// 计算目标分数范围
-var minTotal,maxTotal;
-
-if(targetRank===1){
-// 第1名：只需要超过原第1名
-minTotal=lowerStudent?lowerStudent.total+0.01:s.total+0.01;
-maxTotal=100;
-}else if(!higherStudent){
-// 没有前一名
-minTotal=lowerStudent?lowerStudent.total+0.01:s.total+0.01;
-maxTotal=s.total+10;
-}else{
-// 正常情况：插入到 higher 和 lower 之间
-minTotal=lowerStudent?lowerStudent.total+0.005:s.total+0.01;
-maxTotal=higherStudent.total-0.005;
-}
-
-// 确保范围有效
-if(minTotal>=maxTotal){
-// 放宽条件
-minTotal=lowerStudent?lowerStudent.total+0.001:s.total+0.01;
-maxTotal=higherStudent?higherStudent.total-0.001:minTotal+1;
-}
-
-var bestDelta=null;
-var bestNewTotal=null;
-var bestError=Infinity;
-
-// 尝试不同的delta（扩大范围到-20到+20）
-for(var delta=-20;delta<=20;delta++){
-if(delta===0)continue;
-
-var newScores=[];
-var valid=true;
-for(var i=0;i<20;i++){
-var newScore=Math.round(rawScores[i])+delta;
-if(newScore<60||newScore>100){valid=false;break;}
-newScores.push(newScore);
-}
-if(!valid)continue;
-
-var newRetest=calcRetest(newScores).retest;
-var newTotal=round2(initial/10+newRetest/2);
-
-// 检查是否满足排名要求
-var meetsRequirement=false;
-if(currentRank<targetRank){
-// 往后调（降分）：需要低于lowerStudent
-meetsRequirement=newTotal<(lowerStudent?lowerStudent.total:s.total);
-}else{
-// 往前调（提分）：需要高于lowerStudent且低于higherStudent
-var aboveLower=lowerStudent?newTotal>lowerStudent.total:true;
-var belowHigher=higherStudent?newTotal<higherStudent.total:true;
-meetsRequirement=aboveLower&&belowHigher;
-}
-
-if(meetsRequirement){
-var error=Math.abs(newTotal-s.total);
-if(error<bestError){
-bestError=error;
-bestDelta=delta;
-bestNewTotal=newTotal;
-}
-}
-}
-
-// 如果没找到精确解，尝试放宽条件
-if(bestDelta===null){
-for(var delta=-20;delta<=20;delta++){
-if(delta===0)continue;
-
-var newScores=[];
-var valid=true;
-for(var i=0;i<20;i++){
-var newScore=Math.round(rawScores[i])+delta;
-if(newScore<60||newScore>100){valid=false;break;}
-newScores.push(newScore);
-}
-if(!valid)continue;
-
-var newRetest=calcRetest(newScores).retest;
-var newTotal=round2(initial/10+newRetest/2);
-
-// 放宽：只要求超过目标位置的当前学生
-var meetsRelaxed=false;
-if(currentRank<targetRank){
-meetsRelaxed=newTotal<(lowerStudent?lowerStudent.total:s.total);
-}else{
-meetsRelaxed=newTotal>(lowerStudent?lowerStudent.total:0);
-}
-
-if(meetsRelaxed){
-var error=Math.abs(newTotal-s.total);
-if(error<bestError){
-bestError=error;
-bestDelta=delta;
-bestNewTotal=newTotal;
-}
-}
-}
-}
-
-return{
-delta:bestDelta,
-newTotal:bestNewTotal,
-success:bestDelta!==null
-};
+  for(var i=0;i<students.length;i++){
+    var s=students[i];
+    var input=document.getElementById('target-'+s.seq);
+    s.target=input?parseInt(input.value)||0:0;
+  }
+  
+  var simStudents=students.map(function(s){
+    return{
+      id:s.id,
+      name:s.name,
+      currentRank:s.currentRank,
+      target:s.target,
+      total:s.total,
+      initial:s.initial,
+      rawScores:s.rawScores.slice()
+    };
+  });
+  
+  var toAdjust=simStudents.filter(function(s){
+    return s.target>0&&s.target!==s.currentRank;
+  });
+  
+  if(toAdjust.length===0)return{success:false,message:'没有需要调整的学生'};
+  
+  toAdjust.sort(function(a,b){
+    return Math.abs(a.target-a.currentRank)-Math.abs(b.target-b.currentRank);
+  });
+  
+  simulationResults=[];
+  var adjustedIds={};
+  var maxIterations=toAdjust.length*5;
+  var iteration=0;
+  
+  while(iteration<maxIterations){
+    iteration++;
+    var processedInThisRound=0;
+    
+    for(var i=0;i<toAdjust.length;i++){
+      var s=toAdjust[i];
+      if(adjustedIds[s.id])continue;
+      
+      var result=findSmartAdjustment(s,s.target,simStudents);
+      
+      if(result.success){
+        s.newTotal=result.newTotal;
+        s.delta=result.delta;
+        s.newScores=result.newScores;
+        s.strategy=result.strategy;
+        adjustedIds[s.id]=true;
+        processedInThisRound++;
+        
+        simulationResults.push({
+          student:s,
+          delta:result.delta,
+          newTotal:result.newTotal,
+          strategy:result.strategy,
+          modifiedCount:result.modifiedCount
+        });
+        
+        for(var j=0;j<simStudents.length;j++){
+          if(simStudents[j].id===s.id){
+            simStudents[j].total=result.newTotal;
+            break;
+          }
+        }
+      }
+    }
+    
+    if(processedInThisRound===0)break;
+  }
+  
+  var failed=toAdjust.filter(function(s){return!adjustedIds[s.id];});
+  
+  return{
+    success:simulationResults.length>0,
+    results:simulationResults,
+    failed:failed,
+    simStudents:simStudents
+  };
 }
 
 function showPreview(){
-// 读取所有目标
-for(var i=0;i<students.length;i++){
-var s=students[i];
-var input=document.getElementById('target-'+s.seq);
-s.target=input?parseInt(input.value)||0:0;
-}
-
-var sim=simulateNewRanking();
-
-if(!sim.success){
-showMsg('msg-preview','warning','⚠️ '+sim.message);
-showPage('preview');
-return;
-}
-
-// 显示模拟结果
-var html='<div class="simulation-box">';
-html+='<h3>📊 调整预览</h3>';
-html+='<p>将调整 <b>'+sim.results.length+'</b> 名学生</p>';
-
-if(sim.failed.length>0){
-html+='<div class="status warning">⚠️ 以下学生无法找到合适调整方案：';
-for(var i=0;i<sim.failed.length;i++){
-html+=sim.failed[i].name+' ';
-}
-html+='</div>';
-}
-
-html+='<table><tr><th>姓名</th><th>原排名</th><th>目标排名</th><th>原总分</th><th>新总分</th><th>调整幅度</th></tr>';
-for(var i=0;i<sim.results.length;i++){
-var r=sim.results[i];
-var direction=r.delta>0?'↑ 提分'+r.delta+'分':'↓ 降分'+(-r.delta)+'分';
-var color=r.delta>0?'green':'red';
-html+='<tr><td><b>'+r.student.name+'</b></td><td>'+r.student.currentRank+'</td><td><b>'+r.student.target+'</b></td><td>'+r.student.total.toFixed(2)+'</td><td><b>'+r.newTotal.toFixed(2)+'</b></td><td style="color:'+color+'">'+direction+'</td></tr>';
-}
-html+='</table></div>';
-
-// 显示新排名预览
-var newRanking=sim.simStudents.slice().sort(function(a,b){return b.total-a.total;});
-html+='<div class="simulation-box"><h3>🏆 新排名预览</h3>';
-html+='<table><tr><th>新排名</th><th>姓名</th><th>新总分</th><th>变化</th></tr>';
-for(var i=0;i<Math.min(15,newRanking.length);i++){
-var s=newRanking[i];
-var change='';
-if(s.target&&s.target!==s.currentRank){
-var diff=s.target-(i+1);
-if(diff<0)change='<span style="color:green">↑ '+(-diff)+'</span>';
-else if(diff>0)change='<span style="color:red">↓ '+diff+'</span>';
-else change='<span style="color:#667eea">✓ 达标</span>';
-}else{
-change='-';
-}
-html+='<tr><td>'+(i+1)+'</td><td>'+s.name+'</td><td>'+s.total.toFixed(2)+'</td><td>'+change+'</td></tr>';
-}
-if(newRanking.length>15)html+='<tr><td colspan="4">... 还有 '+(newRanking.length-15)+' 名学生 ...</td></tr>';
-html+='</table></div>';
-
-document.getElementById('simulation-result').innerHTML=html;
-showMsg('msg-preview','success','✅ 预览生成完成，请检查新排名是否符合预期');
-showPage('preview');
+  for(var i=0;i<students.length;i++){
+    var s=students[i];
+    var input=document.getElementById('target-'+s.seq);
+    s.target=input?parseInt(input.value)||0:0;
+  }
+  
+  var sim=simulateNewRanking();
+  
+  if(!sim.success){
+    showMsg('msg-preview','warning','⚠️ '+sim.message);
+    showPage('preview');
+    return;
+  }
+  
+  var html='<div class="simulation-box">';
+  html+='<h3>📊 调整预览</h3>';
+  html+='<p>将调整 <b>'+sim.results.length+'</b> 名学生</p>';
+  
+  if(sim.failed.length>0){
+    html+='<div class="status warning">⚠️ 以下学生无法找到合适调整方案：';
+    for(var i=0;i<sim.failed.length;i++){
+      html+=sim.failed[i].name+' ';
+    }
+    html+='</div>';
+  }
+  
+  html+='<table><tr><th>姓名</th><th>原排名</th><th>目标排名</th><th>原总分</th><th>新总分</th><th>调整策略</th><th>幅度</th></tr>';
+  for(var i=0;i<sim.results.length;i++){
+    var r=sim.results[i];
+    var direction=r.delta>0?'+'+r.delta:r.delta;
+    var color=r.delta>0?'green':'red';
+    html+='<tr><td><b>'+r.student.name+'</b></td><td>'+r.student.currentRank+'</td><td><b>'+r.student.target+'</b></td><td>'+r.student.total.toFixed(2)+'</td><td><b>'+r.newTotal.toFixed(2)+'</b></td><td>'+r.strategy+'</td><td style="color:'+color+'">'+direction+'</td></tr>';
+  }
+  html+='</table></div>';
+  
+  // 显示新排名预览
+  var newRanking=sim.simStudents.slice().sort(function(a,b){return b.total-a.total;});
+  html+='<div class="simulation-box"><h3>🏆 新排名预览</h3>';
+  html+='<table><tr><th>新排名</th><th>姓名</th><th>新总分</th><th>目标排序</th><th>实际排序</th><th>状态</th></tr>';
+  for(var i=0;i<newRanking.length;i++){
+    var s=newRanking[i];
+    var actualRank=i+1;
+    var targetStr=s.target?s.target:'-';
+    var status='';
+    
+    if(s.target&&s.target!==s.currentRank){
+      if(actualRank===s.target){
+        status='<span style="color:#28a745;font-weight:bold">✓ 达标</span>';
+      }else{
+        var diff=Math.abs(actualRank-s.target);
+        status='<span style="color:#d39e00">差'+diff+'名</span>';
+      }
+    }else{
+      status='-';
+    }
+    
+    html+='<tr><td>'+actualRank+'</td><td>'+s.name+'</td><td>'+s.total.toFixed(2)+'</td><td>'+targetStr+'</td><td><b>'+actualRank+'</b></td><td>'+status+'</td></tr>';
+  }
+  html+='</table></div>';
+  
+  document.getElementById('simulation-result').innerHTML=html;
+  showMsg('msg-preview','success','✅ 预览生成完成，请检查新排名是否符合预期');
+  showPage('preview');
 }
 
 function executeAdjustment(){
-var sim=simulateNewRanking();
-
-if(!sim.success||sim.results.length===0){
-showMsg('msg-result','error','❌ 没有可执行的调整');
-showPage('result');
-return;
-}
-
-mods=[];results=[];
-
-for(var i=0;i<sim.results.length;i++){
-var simResult=sim.results[i];
-var s=simResult.student;
-var delta=simResult.delta;
-var newTotal=simResult.newTotal;
-
-// 找到原始学生对象
-var originalStudent=null;
-for(var j=0;j<students.length;j++){
-if(students[j].id===s.id){
-originalStudent=students[j];
-break;
-}
-}
-if(!originalStudent)continue;
-
-// 生成新的分数
-var newScores=[];
-for(var k=0;k<20;k++){
-newScores.push(Math.round(originalStudent.rawScores[k])+delta);
-}
-
-results.push({
-student:originalStudent,
-targetRank:originalStudent.target,
-currentRank:originalStudent.currentRank,
-newTotal:newTotal,
-delta:delta
-});
-
-// 记录修改
-for(var e=0;e<5;e++){
-var expName='面试官'+(e+1);
-for(var subj=0;subj<4;subj++){
-var idx=e*4+subj;
-var oldVal=Math.round(originalStudent.rawScores[idx]);
-var newVal=newScores[idx];
-if(oldVal!==newVal){
-mods.push({
-student:originalStudent.name,
-expert:expName,
-subject:SUBJECTS[subj],
-old:oldVal,
-new:newVal,
-delta:delta
-});
-}
-}
-}
-
-// 应用修改到Excel
-for(var e=0;e<5;e++){
-var colStart=EXPERT_COLS[e];
-for(var subj=0;subj<4;subj++){
-var colIdx=colStart+subj;
-var cellRef=XLSX.utils.encode_cell({r:originalStudent.rowIndex,c:colIdx});
-ws[cellRef]={v:newScores[e*4+subj],t:'n'};
-}
-}
-}
-
-// 写入目标排名
-for(var i=0;i<students.length;i++){
-var s=students[i];
-var targetCell=XLSX.utils.encode_cell({r:s.rowIndex,c:COL_TARGET});
-ws[targetCell]={v:s.target,t:'n'};
-}
-
-showResultPage(results.length);
+  var sim=simulateNewRanking();
+  
+  if(!sim.success||sim.results.length===0){
+    showMsg('msg-result','error','❌ 没有可执行的调整');
+    showPage('result');
+    return;
+  }
+  
+  mods=[];results=[];
+  
+  // 计算最终排名
+  var finalRanking=sim.simStudents.slice().sort(function(a,b){return b.total-a.total;});
+  
+  for(var i=0;i<sim.results.length;i++){
+    var simResult=sim.results[i];
+    var s=simResult.student;
+    var delta=simResult.delta;
+    var newTotal=simResult.newTotal;
+    
+    // 找到原始学生
+    var originalStudent=null;
+    for(var j=0;j<students.length;j++){
+      if(students[j].id===s.id){
+        originalStudent=students[j];
+        break;
+      }
+    }
+    if(!originalStudent)continue;
+    
+    // 找到该学生在新排名中的实际位置
+    var actualRank=-1;
+    for(var r=0;r<finalRanking.length;r++){
+      if(finalRanking[r].id===s.id){
+        actualRank=r+1;
+        break;
+      }
+    }
+    
+    // 生成新分数
+    var newScores=simResult.newScores||[];
+    if(newScores.length===0){
+      for(var k=0;k<20;k++){
+        newScores.push(Math.round(originalStudent.rawScores[k])+delta);
+      }
+    }
+    
+    results.push({
+      student:originalStudent,
+      targetRank:originalStudent.target,
+      currentRank:originalStudent.currentRank,
+      actualRank:actualRank,
+      newTotal:newTotal,
+      delta:delta,
+      strategy:simResult.strategy
+    });
+    
+    // 记录修改详情
+    for(var e=0;e<5;e++){
+      var expName='面试官'+(e+1);
+      for(var subj=0;subj<4;subj++){
+        var idx=e*4+subj;
+        var oldVal=Math.round(originalStudent.rawScores[idx]);
+        var newVal=Math.round(newScores[idx]);
+        if(oldVal!==newVal){
+          mods.push({
+            student:originalStudent.name,
+            expert:expName,
+            subject:SUBJECTS[subj],
+            old:oldVal,
+            new:newVal,
+            delta:newVal-oldVal
+          });
+        }
+      }
+    }
+    
+    // 应用修改到Excel
+    for(var e=0;e<5;e++){
+      var colStart=EXPERT_COLS[e];
+      for(var subj=0;subj<4;subj++){
+        var colIdx=colStart+subj;
+        var cellRef=XLSX.utils.encode_cell({r:originalStudent.rowIndex,c:colIdx});
+        ws[cellRef]={v:Math.round(newScores[e*4+subj]),t:'n'};
+      }
+    }
+  }
+  
+  // 写入目标排名和实际排名
+  for(var i=0;i<students.length;i++){
+    var s=students[i];
+    var targetCell=XLSX.utils.encode_cell({r:s.rowIndex,c:COL_TARGET});
+    ws[targetCell]={v:s.target,t:'n'};
+    
+    // 添加实际排名列（使用第30列，即COL_TARGET+1）
+    var actualRankCell=XLSX.utils.encode_cell({r:s.rowIndex,c:COL_TARGET+1});
+    var actualRank=-1;
+    for(var r=0;r<finalRanking.length;r++){
+      if(finalRanking[r].id===s.id){
+        actualRank=r+1;
+        break;
+      }
+    }
+    ws[actualRankCell]={v:actualRank,t:'n'};
+  }
+  
+  // 更新表头
+  var targetHeader=XLSX.utils.encode_cell({r:0,c:COL_TARGET});
+  var actualHeader=XLSX.utils.encode_cell({r:0,c:COL_TARGET+1});
+  ws[targetHeader]={v:'目标排序',t:'s'};
+  ws[actualHeader]={v:'实际排序',t:'s'};
+  
+  showResultPage(results.length);
 }
 
 function showResultPage(modifiedCount){
-var html='<h3>调整结果汇总</h3><p>成功修改 <b>'+modifiedCount+'</b> 名学生 | 修改单元格: <b>'+mods.length+'</b> 个</p>';
-
-if(results.length>0){
-html+='<table><tr><th>姓名</th><th>原排名</th><th>目标排名</th><th>原总分</th><th>新总分</th><th>调整幅度</th></tr>';
-for(var i=0;i<results.length;i++){
-var r=results[i];
-var direction=r.delta>0?'↑ 提分'+r.delta+'分':'↓ 降分'+(-r.delta)+'分';
-var color=r.delta>0?'green':'red';
-html+='<tr><td><b>'+r.student.name+'</b></td><td>'+r.currentRank+'</td><td><b>'+r.targetRank+'</b></td><td>'+r.student.total.toFixed(2)+'</td><td><b>'+r.newTotal.toFixed(2)+'</b></td><td style="color:'+color+'">'+direction+'</td></tr>';
-}
-html+='</table>';
-}
-
-if(mods.length>0){
-html+='<h3>面试官打分修改明细（整数）</h3><table><tr><th>学生</th><th>面试官</th><th>科目</th><th>原分数</th><th>新分数</th><th>变化</th></tr>';
-var byStudent={};
-for(var i=0;i<mods.length;i++){
-var m=mods[i];
-if(!byStudent[m.student])byStudent[m.student]=[];
-byStudent[m.student].push(m);
-}
-for(var name in byStudent){
-var mlist=byStudent[name];
-for(var i=0;i<mlist.length;i++){
-var m=mlist[i];
-var deltaStr=m.delta>0?'+'+m.delta:m.delta;
-html+='<tr'+(i===0?' style="border-top:2px solid #667eea"':'')+'><td>'+(i===0?name:'')+'</td><td>'+m.expert+'</td><td>'+m.subject+'</td><td>'+m.old+'</td><td class="modified">'+m.new+'</td><td>'+deltaStr+'</td></tr>';
-}
-}
-html+='</table>';
-}
-
-document.getElementById('result-table').innerHTML=html;
-document.getElementById('download-box').classList.add('show');
-showMsg('msg-result','success','✅ 批量调整完成！所有专家打分已调整为整数。');
-showPage('result');
+  var html='<h3>调整结果汇总</h3><p>成功修改 <b>'+modifiedCount+'</b> 名学生 | 修改单元格: <b>'+mods.length+'</b> 个</p>';
+  
+  if(results.length>0){
+    html+='<table><tr><th>姓名</th><th>原排名</th><th>目标排名</th><th>实际排名</th><th>原总分</th><th>新总分</th><th>调整策略</th><th>幅度</th></tr>';
+    for(var i=0;i<results.length;i++){
+      var r=results[i];
+      var direction=r.delta>0?'↑+'+r.delta:'↓'+r.delta;
+      var color=r.delta>0?'green':'red';
+      var rankStatus=r.actualRank===r.targetRank?'<span style="color:#28a745">✓</span>':'<span style="color:#d39e00">差'+Math.abs(r.actualRank-r.targetRank)+'</span>';
+      html+='<tr><td><b>'+r.student.name+'</b></td><td>'+r.currentRank+'</td><td><b>'+r.targetRank+'</b></td><td>'+r.actualRank+' '+rankStatus+'</td><td>'+r.student.total.toFixed(2)+'</td><td><b>'+r.newTotal.toFixed(2)+'</b></td><td>'+r.strategy+'</td><td style="color:'+color+'">'+direction+'</td></tr>';
+    }
+    html+='</table>';
+  }
+  
+  if(mods.length>0){
+    html+='<h3>面试官打分修改明细（整数）</h3><table><tr><th>学生</th><th>面试官</th><th>科目</th><th>原分数</th><th>新分数</th><th>变化</th></tr>';
+    var byStudent={};
+    for(var i=0;i<mods.length;i++){
+      var m=mods[i];
+      if(!byStudent[m.student])byStudent[m.student]=[];
+      byStudent[m.student].push(m);
+    }
+    for(var name in byStudent){
+      var mlist=byStudent[name];
+      for(var i=0;i<mlist.length;i++){
+        var m=mlist[i];
+        var deltaStr=m.delta>0?'+'+m.delta:m.delta;
+        html+='<tr'+(i===0?' style="border-top:2px solid #667eea"':'')+'><td>'+(i===0?name:'')+'</td><td>'+m.expert+'</td><td>'+m.subject+'</td><td>'+m.old+'</td><td class="modified">'+m.new+'</td><td>'+deltaStr+'</td></tr>';
+      }
+    }
+    html+='</table>';
+  }
+  
+  document.getElementById('result-table').innerHTML=html;
+  document.getElementById('download-box').classList.add('show');
+  showMsg('msg-result','success','✅ 批量调整完成！已添加"实际排序"列。');
+  showPage('result');
 }
 
 function downloadFile(){
-if(!wb||mods.length===0){alert('没有可导出的数据');return;}
-var modData=[['修改记录'],['生成时间',new Date().toLocaleString()],['修改学生数',results.length],['修改单元格数',mods.length],[],['学生','面试官','科目','原分数','新分数','变化']];
-for(var i=0;i<mods.length;i++){
-var m=mods[i];
-modData.push([m.student,m.expert,m.subject,m.old,m.new,m.delta]);
-}
-var modWs=XLSX.utils.aoa_to_sheet(modData);
-wb.SheetNames.push('修改记录');
-wb.Sheets['修改记录']=modWs;
-XLSX.writeFile(wb,'成绩单_已调整.xlsx');
-showMsg('msg-result','success','✅ 文件已下载！');
+  if(!wb||mods.length===0){alert('没有可导出的数据');return;}
+  var modData=[['修改记录'],['生成时间',new Date().toLocaleString()],['修改学生数',results.length],['修改单元格数',mods.length],[],['学生','面试官','科目','原分数','新分数','变化']];
+  for(var i=0;i<mods.length;i++){
+    var m=mods[i];
+    modData.push([m.student,m.expert,m.subject,m.old,m.new,m.delta]);
+  }
+  var modWs=XLSX.utils.aoa_to_sheet(modData);
+  wb.SheetNames.push('修改记录');
+  wb.Sheets['修改记录']=modWs;
+  XLSX.writeFile(wb,'成绩单_已调整.xlsx');
+  showMsg('msg-result','success','✅ 文件已下载！');
 }
 </script>
 </body>
